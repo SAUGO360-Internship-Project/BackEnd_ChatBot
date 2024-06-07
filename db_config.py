@@ -1,0 +1,1 @@
+DB_CONFIG = 'postgresql://postgres:Ihab2003*@localhost:5432/chatbot'
