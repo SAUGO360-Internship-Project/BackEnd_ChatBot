@@ -2,7 +2,6 @@
 .env
 venv/
 __pycache__/
-db_config.py
 **/.idea/shelf/
 **/.idea/tasks.xml
 **/.idea/workspace.xml
