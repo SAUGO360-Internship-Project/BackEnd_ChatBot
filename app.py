@@ -3,16 +3,24 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
-from flask import Flask
-from flask_cors import CORS
+
 from extensions import db, ma, bcrypt, migrate
 from model.user import User, user_schema
-from db_config import DB_CONFIG
+
 
 from blueprints.user_bp import user_bp
+from blueprints.chat_bp import chat_bp
 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+import openai
 
+DB_CONFIG = os.getenv('DB_CONFIG')
 
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -45,6 +53,12 @@ def home():
 @app.route('/hello', methods=['GET'])
 def hello_world():
     return "Hello World!"
+
+
+# Register the blueprint
+app.register_blueprint(chat_bp, url_prefix='/chat')
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)

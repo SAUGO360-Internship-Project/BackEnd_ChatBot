@@ -35,3 +35,5 @@ SQLAlchemy==2.0.30
 tqdm==4.66.4
 typing_extensions==4.12.1
 Werkzeug==3.0.3
+
+dbconfig== 0.3.2
