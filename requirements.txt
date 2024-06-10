@@ -36,4 +36,4 @@ tqdm==4.66.4
 typing_extensions==4.12.1
 Werkzeug==3.0.3
 
-dbconfig== 0.3.2
+python-dotenv== 1.0.1
