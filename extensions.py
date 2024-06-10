@@ -2,11 +2,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
-from db_config import SECRET_KEY
+
 from datetime import datetime, timedelta
 import jwt, re
+import os
 
 
+SECRET_KEY= os.getenv('SECRET_KEY')
 
 db = SQLAlchemy()
 ma = Marshmallow()
