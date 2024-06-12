@@ -20,7 +20,7 @@ from blueprints.chat_bp import chat_bp
 from blueprints.fewshot_bp import fewshot_bp  # Import fewshot_bp
 from model.chat import Chat, Conversation, chat_schema, conversation_schema
 from model.few_shot import FewShot
-from utils import get_embeddings, cosine_similarity, select_relevant_few_shots  # Import utility functions
+from extensions import get_embeddings, cosine_similarity, select_relevant_few_shots  # Import utility functions
 from model.test import CustomerProfile, Product, PurchaseHistory
 
 # Load environment variables
@@ -66,10 +66,39 @@ def generate_sql_query(user_question):
     example_texts = "\n".join(
         [f"Question: \"{ex.question}\"\nSQL: \"{ex.sql_query}\"" for ex in relevant_examples]
     )
-    
+
     prompt = f"""
     The database schema is as follows:
-    (Provide your schema information here when ready)
+
+    Table customer_profile:
+    - customer_id (Integer, Primary Key)
+    - first_name (String)
+    - last_name (String)
+    - gender (String)
+    - date_of_birth (Date)
+    - email (String)
+    - phone_number (String)
+    - signup_date (Date)
+    - address (String)
+    - city (String)
+    - state (String)
+    - zip_code (String)
+
+    Table products:
+    - product_id (Integer, Primary Key)
+    - product_name (String)
+    - category (String)
+    - price_per_unit (Float)
+    - brand (String)
+    - product_description (Text)
+
+    Table purchase_history:
+    - purchase_id (Integer, Primary Key)
+    - customer_id (Integer, Foreign Key to customer_profile.customer_id)
+    - product_id (Integer, Foreign Key to products.product_id)
+    - purchase_date (Date)
+    - quantity (Integer)
+    - total_amount (Float)
 
     Examples:
     {example_texts}
@@ -89,6 +118,7 @@ def generate_sql_query(user_question):
         sql_query = sql_query.split("```sql")[1].split("```")[0].strip()
     
     return sql_query
+
 
 def format_response_with_gpt(user_question, data):
     prompt = f"""
@@ -118,12 +148,19 @@ def ask():
     sql_query = generate_sql_query(user_question)
 
     try:
-        # Execute SQL query
-        result = db.session.execute(text(sql_query)).fetchall()
-        result_dicts = [dict(row) for row in result]
+        # Get the appropriate session with the bind key
+        engine = db.get_engine(app, bind='TestingData')
+        session = engine.connect()
+        
+        # Execute SQL query on TestingData
+        result = session.execute(text(sql_query)).fetchall() 
+
+        # Debugging: Print the result to verify structure
+        print(f"SQL Query Result: {result}") 
+
 
         # Format the result with GPT-4
-        formatted_response = format_response_with_gpt(user_question, result_dicts)
+        formatted_response = format_response_with_gpt(user_question, result)
         
         # Store the conversation
         conversation = Conversation(chat_id=chat_id, user_query=user_question, response=formatted_response)
@@ -132,7 +169,12 @@ def ask():
 
         return jsonify({"response": formatted_response})
     except Exception as e:
+        print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
 
 @app.route('/')
 def home():
