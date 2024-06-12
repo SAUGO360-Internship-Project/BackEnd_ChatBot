@@ -1,7 +1,7 @@
 from extensions import db, ma
 
 class CustomerProfile(db.Model):
-    __bind_key__ = 'test_db'
+    __bind_key__ = 'TestingData'
     __tablename__ = 'customer_profile'
     customer_id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(100), nullable=False)
@@ -17,7 +17,7 @@ class CustomerProfile(db.Model):
     zip_code = db.Column(db.String(20), nullable=True)
 
 class Product(db.Model):
-    __bind_key__ = 'test_db'
+    __bind_key__ = 'TestingData'
     __tablename__ = 'products'
     product_id = db.Column(db.Integer, primary_key=True)
     product_name = db.Column(db.String(100), nullable=False)
@@ -27,7 +27,7 @@ class Product(db.Model):
     product_description = db.Column(db.Text, nullable=True)
 
 class PurchaseHistory(db.Model):
-    __bind_key__ = 'test_db'
+    __bind_key__ = 'TestingData'
     __tablename__ = 'purchase_history'
     purchase_id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer_profile.customer_id'), nullable=False)

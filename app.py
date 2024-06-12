@@ -21,6 +21,7 @@ from blueprints.fewshot_bp import fewshot_bp  # Import fewshot_bp
 from model.chat import Chat, Conversation, chat_schema, conversation_schema
 from model.few_shot import FewShot
 from utils import get_embeddings, cosine_similarity, select_relevant_few_shots  # Import utility functions
+from model.test import CustomerProfile, Product, PurchaseHistory
 
 # Load environment variables
 load_dotenv()
@@ -33,7 +34,7 @@ app = Flask(__name__)
 # Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = DB_CONFIG
 app.config['SQLALCHEMY_BINDS'] = {
-    'test_db': DB_CONFIG_TEST
+    'TestingData': DB_CONFIG_TEST
 }
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 

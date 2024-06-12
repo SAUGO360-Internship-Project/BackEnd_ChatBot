@@ -1,8 +1,8 @@
-"""Initial migration for main database
+"""Initial migration for chatbot database
 
-Revision ID: 448287261fba
+Revision ID: f8995905958b
 Revises: 
-Create Date: 2024-06-11 13:16:24.850976
+Create Date: 2024-06-12 11:00:13.674011
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '448287261fba'
+revision = 'f8995905958b'
 down_revision = None
 branch_labels = None
 depends_on = None
