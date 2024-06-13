@@ -95,7 +95,7 @@ def select_relevant_few_shots(user_question, few_shot_examples, top_n=3):
     return relevant_examples
 
 
-def generate_sql_query(user_question):
+def generate_sql_query(user_question, conversation_history):
     few_shot_examples = FewShot.query.all()
     relevant_examples = select_relevant_few_shots(user_question, few_shot_examples)
 
@@ -103,18 +103,15 @@ def generate_sql_query(user_question):
         [f"Question: \"{ex.question}\"\nSQL: \"{ex.sql_query}\"" for ex in relevant_examples]
     )
 
-    prompt = f"""
-    {db_schema_prompt}
-    
-    Examples:
-    {example_texts}
+    # Append the database schema prompt and examples to the conversation history
+    conversation_history.append({"role": "system", "content": db_schema_prompt})
+    conversation_history.append({"role": "system", "content": f"Examples:\n{example_texts}"})
+    conversation_history.append({"role": "system", "content": f"Convert the following question to a single SQL query without any additional text or explanation: \"{user_question}\""})
 
-    Convert the following question to a single SQL query without any additional text or explanation: "{user_question}"
-    """
     
     response = client.chat.completions.create(
         model='gpt-4o',
-        messages=[{"role": "system", "content": prompt}],
+        messages=conversation_history,
         max_tokens=150
     )
     sql_query = response.choices[0].message.content.strip()
@@ -122,6 +119,10 @@ def generate_sql_query(user_question):
     # Remove any non-SQL parts (e.g., markdown or explanations)
     if "```sql" in sql_query:
         sql_query = sql_query.split("```sql")[1].split("```")[0].strip()
+        
+    # Replace MONTH and YEAR functions with EXTRACT for PostgreSQL compatibility
+    sql_query = sql_query.replace("MONTH(", "EXTRACT(MONTH FROM ")
+    sql_query = sql_query.replace("YEAR(", "EXTRACT(YEAR FROM ")
     
     return sql_query
 
@@ -202,8 +203,22 @@ def ask():
     #         return jsonify({"error": "Could not find the address for the specified person"}), 404
     #     return jsonify({"response": f"The address for {name} is: {maps_link}"})
 
+    # Fetch previous conversations for context
+    previous_conversations = Conversation.query.filter_by(chat_id=chat_id).order_by(Conversation.timestamp).all()
+    
+    conversation_history = [
+        {"role": "system", "content": db_schema_prompt}
+    ]
+
+    for convo in previous_conversations:
+        conversation_history.append({"role": "user", "content": convo.user_query})
+        conversation_history.append({"role": "assistant", "content": convo.response})
+
+    # Add the current question to the conversation history
+    conversation_history.append({"role": "user", "content": user_question})
+    
     # Generate SQL query
-    sql_query = generate_sql_query(user_question)
+    sql_query = generate_sql_query(user_question, conversation_history)
 
     try:
         # Get the appropriate session with the bind key
