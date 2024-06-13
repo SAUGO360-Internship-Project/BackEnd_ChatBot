@@ -14,7 +14,7 @@ from app import app
 
 #adjust paths as needed
 def load_customer_profiles():
-    df = pd.read_csv('C:\\Users\\Saad\\Desktop\\customer_profile_dataset.csv')
+    df = pd.read_csv(r'C:\Users\Ihab\Downloads\customer_profile_dataset.csv')
     for index, row in df.iterrows():
         customer = CustomerProfile(
             customer_id=row['customer_id'],
@@ -34,7 +34,7 @@ def load_customer_profiles():
     db.session.commit()
 
 def load_products():
-    df = pd.read_csv('C:\\Users\\Saad\\Desktop\\products_dataset.csv')
+    df = pd.read_csv(r'C:\Users\Ihab\Downloads\products_dataset.csv')
     for index, row in df.iterrows():
         product = Product(
             product_id=row['product_id'],
@@ -48,7 +48,7 @@ def load_products():
     db.session.commit()
 
 def load_purchase_history():
-    df = pd.read_csv('C:\\Users\\Saad\\Desktop\\purchase_history_dataset.csv')
+    df = pd.read_csv(r'C:\Users\Ihab\Downloads\purchase_history_dataset.csv')
     for index, row in df.iterrows():
         purchase = PurchaseHistory(
             purchase_id=row['purchase_id'],

@@ -4,10 +4,9 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from dotenv import load_dotenv
-from openai import OpenAI
 from sqlalchemy import text
 from flask_migrate import Migrate
-
+from datetime import datetime
 
 # Add the current directory to the Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -20,7 +19,7 @@ from blueprints.chat_bp import chat_bp
 from blueprints.fewshot_bp import fewshot_bp  # Import fewshot_bp
 from model.chat import Chat, Conversation, chat_schema, conversation_schema
 from model.few_shot import FewShot
-from extensions import get_embeddings, cosine_similarity, select_relevant_few_shots  # Import utility functions
+from extensions import extract_name_from_question, fetch_address_and_generate_link, generate_sql_query,format_response_with_gpt 
 from model.test import CustomerProfile, Product, PurchaseHistory
 
 # Load environment variables
@@ -28,6 +27,7 @@ load_dotenv()
 
 DB_CONFIG = os.getenv('DB_CONFIG')
 DB_CONFIG_TEST = os.getenv('DB_CONFIG_TEST')
+
 
 app = Flask(__name__)
 
@@ -51,90 +51,10 @@ migrate_main = Migrate(app, db, directory='migrations')
 # Initialize Flask-Migrate for the test database
 migrate_test = Migrate(app, db, directory='migrations_test')
 
-
 # Register blueprints
 app.register_blueprint(user_bp, url_prefix='/user')
 app.register_blueprint(chat_bp, url_prefix='/chat')
 app.register_blueprint(fewshot_bp, url_prefix='/fewshot')
-
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-def generate_sql_query(user_question):
-    few_shot_examples = FewShot.query.all()
-    relevant_examples = select_relevant_few_shots(user_question, few_shot_examples)
-
-    example_texts = "\n".join(
-        [f"Question: \"{ex.question}\"\nSQL: \"{ex.sql_query}\"" for ex in relevant_examples]
-    )
-
-    prompt = f"""
-    The database schema is as follows:
-
-    Table customer_profile:
-    - customer_id (Integer, Primary Key)
-    - first_name (String)
-    - last_name (String)
-    - gender (String)
-    - date_of_birth (Date)
-    - email (String)
-    - phone_number (String)
-    - signup_date (Date)
-    - address (String)
-    - city (String)
-    - state (String)
-    - zip_code (String)
-
-    Table products:
-    - product_id (Integer, Primary Key)
-    - product_name (String)
-    - category (String)
-    - price_per_unit (Float)
-    - brand (String)
-    - product_description (Text)
-
-    Table purchase_history:
-    - purchase_id (Integer, Primary Key)
-    - customer_id (Integer, Foreign Key to customer_profile.customer_id)
-    - product_id (Integer, Foreign Key to products.product_id)
-    - purchase_date (Date)
-    - quantity (Integer)
-    - total_amount (Float)
-
-    Examples:
-    {example_texts}
-
-    Convert the following question to a single SQL query without any additional text or explanation: "{user_question}"
-    """
-    
-    response = client.chat.completions.create(
-        model='gpt-4o',
-        messages=[{"role": "system", "content": prompt}],
-        max_tokens=150
-    )
-    sql_query = response.choices[0].message.content.strip()
-
-    # Remove any non-SQL parts (e.g., markdown or explanations)
-    if "```sql" in sql_query:
-        sql_query = sql_query.split("```sql")[1].split("```")[0].strip()
-    
-    return sql_query
-
-
-def format_response_with_gpt(user_question, data):
-    prompt = f"""
-    Question: {user_question}
-    
-    Data: {data}
-    
-    Format this data in a user-friendly way:
-    """
-    
-    response = client.chat.completions.create(
-        model='gpt-4o',  # Use GPT-4 model
-        messages=[{"role": "system", "content": prompt}],
-        max_tokens=150
-    )
-    return response.choices[0].message.content.strip()
 
 @app.route('/ask', methods=['POST'])
 def ask():
@@ -143,6 +63,16 @@ def ask():
     chat_id = data.get('chat_id')  # Added chat_id to identify the conversation
     if not user_question or not chat_id:
         return jsonify({"error": "Question and chat_id are required"}), 400
+    
+     # Check if the question is about location
+    if any(keyword in user_question.lower() for keyword in ["location", "address", "where", "located"]):
+        name = extract_name_from_question(user_question)
+        if not name:
+            return jsonify({"error": "Could not determine the name from the question"}), 400
+        maps_link = fetch_address_and_generate_link(name)
+        if not maps_link:
+            return jsonify({"error": "Could not find the address for the specified person"}), 404
+        return jsonify({"response": f"The address for {name} is: {maps_link}"})
 
     # Generate SQL query
     sql_query = generate_sql_query(user_question)
@@ -167,14 +97,12 @@ def ask():
         db.session.add(conversation)
         db.session.commit()
 
-        return jsonify({"response": formatted_response})
+        return jsonify({"response": formatted_response}), 201
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
-
-
 
 @app.route('/')
 def home():
@@ -182,7 +110,6 @@ def home():
         "Welcome to the Intelligent Chatbot with PostgreSQL home page"
         "ChatBot API Documentation Link: "
     )
-
 
 
 if __name__ == '__main__':
