@@ -1,0 +1,31 @@
+The database schema is as follows:
+
+    Table customer_profile:
+    - customer_id (Integer, Primary Key)
+    - first_name (String)
+    - last_name (String)
+    - gender (String)
+    - date_of_birth (Date)
+    - email (String)
+    - phone_number (String)
+    - signup_date (Date)
+    - address (String)
+    - city (String)
+    - state (String)
+    - zip_code (String)
+
+    Table products:
+    - product_id (Integer, Primary Key)
+    - product_name (String)
+    - category (String)
+    - price_per_unit (Float)
+    - brand (String)
+    - product_description (Text)
+
+    Table purchase_history:
+    - purchase_id (Integer, Primary Key)
+    - customer_id (Integer, Foreign Key to customer_profile.customer_id)
+    - product_id (Integer, Foreign Key to products.product_id)
+    - purchase_date (Date)
+    - quantity (Integer)
+    - total_amount (Float)

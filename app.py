@@ -65,6 +65,10 @@ app.register_blueprint(user_bp, url_prefix='/user')
 app.register_blueprint(chat_bp, url_prefix='/chat')
 app.register_blueprint(fewshot_bp, url_prefix='/fewshot')
 
+# Load the database schema prompt from a file
+with open('db_schema_prompt.txt', 'r') as file:
+    db_schema_prompt = file.read()
+
 def get_embeddings(text):
     response = client.embeddings.create(
         model="text-embedding-ada-002",
@@ -90,6 +94,7 @@ def select_relevant_few_shots(user_question, few_shot_examples, top_n=3):
     relevant_examples = [ex[0] for ex in similarities[:top_n]]
     return relevant_examples
 
+
 def generate_sql_query(user_question):
     few_shot_examples = FewShot.query.all()
     relevant_examples = select_relevant_few_shots(user_question, few_shot_examples)
@@ -99,38 +104,8 @@ def generate_sql_query(user_question):
     )
 
     prompt = f"""
-    The database schema is as follows:
-
-    Table customer_profile:
-    - customer_id (Integer, Primary Key)
-    - first_name (String)
-    - last_name (String)
-    - gender (String)
-    - date_of_birth (Date)
-    - email (String)
-    - phone_number (String)
-    - signup_date (Date)
-    - address (String)
-    - city (String)
-    - state (String)
-    - zip_code (String)
-
-    Table products:
-    - product_id (Integer, Primary Key)
-    - product_name (String)
-    - category (String)
-    - price_per_unit (Float)
-    - brand (String)
-    - product_description (Text)
-
-    Table purchase_history:
-    - purchase_id (Integer, Primary Key)
-    - customer_id (Integer, Foreign Key to customer_profile.customer_id)
-    - product_id (Integer, Foreign Key to products.product_id)
-    - purchase_date (Date)
-    - quantity (Integer)
-    - total_amount (Float)
-
+    {db_schema_prompt}
+    
     Examples:
     {example_texts}
 
