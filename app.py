@@ -106,6 +106,7 @@ def generate_sql_query(user_question, conversation_history):
     # Append the database schema prompt and examples to the conversation history
     conversation_history.append({"role": "system", "content": db_schema_prompt})
     conversation_history.append({"role": "system", "content": f"Examples:\n{example_texts}"})
+    conversation_history.append({"role": "system", "content": "Note: Do not generate or retrieve sensitive information such as passwords, primary keys, IDs, user credentials, or API keys. Do not perform any data-altering operations such as DELETE or UPDATE."})
     conversation_history.append({"role": "system", "content": f"Convert the following question to a single SQL query without any additional text or explanation: \"{user_question}\""})
 
     
@@ -185,6 +186,17 @@ def extract_name_from_question(question):
     match = re.search(r'\b[A-Z][a-z]*\b', question)
     return match.group(0) if match else None
 
+# Function to check for sensitive information
+def contains_sensitive_info(question):
+    sensitive_keywords = ['password', 'user credential', 'api key', 'secret', 'token', 'id', 'primary key']
+    return any(keyword in question.lower() for keyword in sensitive_keywords)
+
+
+# Function to check for data-altering operations
+def contains_data_altering_operations(sql_query):
+    altering_keywords = ['delete', 'update', 'insert', 'alter', 'drop', 'create']
+    return any(keyword in sql_query.lower() for keyword in altering_keywords)
+
 @app.route('/ask', methods=['POST'])
 def ask():
     data = request.json
@@ -192,6 +204,10 @@ def ask():
     chat_id = data.get('chat_id')  # Added chat_id to identify the conversation
     if not user_question or not chat_id:
         return jsonify({"error": "Question and chat_id are required"}), 400
+    
+    # Check for sensitive information
+    if contains_sensitive_info(user_question):
+        return jsonify({"response": "These are sensitive content and I am not allowed to share it."}), 403
     
      # Check if the question is about location
     # if any(keyword in user_question.lower() for keyword in ["location", "address", "where", "located"]):
@@ -219,6 +235,10 @@ def ask():
     
     # Generate SQL query
     sql_query = generate_sql_query(user_question, conversation_history)
+    
+    # Check for data-altering operations
+    if contains_data_altering_operations(sql_query):
+        return jsonify({"response": "Data-altering operations are not allowed."}), 403
 
     try:
         # Get the appropriate session with the bind key
