@@ -5,10 +5,16 @@ from flask_migrate import Migrate
 from datetime import datetime, timedelta
 import jwt, re
 import os
+from openai import OpenAI
+import numpy as np
+
+
 
 
 
 SECRET_KEY= os.getenv('SECRET_KEY')
+
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 
 db = SQLAlchemy()
@@ -131,4 +137,44 @@ def validate_password(password):
     )
 
 
+def get_embeddings(text):
+    response = client.embeddings.create(
+        model="text-embedding-ada-002",
+        input=text,
+        encoding_format="float"
+    )
+    return response.data[0].embedding 
 
+def cosine_similarity(vec1, vec2):
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
+def select_relevant_few_shots(user_question, few_shot_examples, top_n=3):
+    user_embedding = get_embeddings(user_question)
+    similarities = []
+
+    for example in few_shot_examples:
+        example_embedding = get_embeddings(example.question)
+        similarity = cosine_similarity(user_embedding, example_embedding)
+        similarities.append((example, similarity))
+
+    # Sort examples by similarity and select top_n
+    similarities.sort(key=lambda x: x[1], reverse=True)
+    relevant_examples = [ex[0] for ex in similarities[:top_n]]
+    return relevant_examples
+
+#function to exctract the name from the question
+def extract_name_from_question(question):
+    # Simple regex to extract a name (assuming the name is a single word, adjust as necessary)
+    match = re.search(r'\b[A-Z][a-z]*\b', question)
+    return match.group(0) if match else None
+
+# Function to check for sensitive information
+def contains_sensitive_info(question):
+    sensitive_keywords = ['password', 'user credential', 'api key', 'secret', 'token', 'id', 'primary key']
+    return any(keyword in question.lower() for keyword in sensitive_keywords)
+
+
+# Function to check for data-altering operations
+def contains_data_altering_operations(sql_query):
+    altering_keywords = ['delete', 'update', 'insert', 'alter', 'drop', 'create']
+    return any(keyword in sql_query.lower() for keyword in altering_keywords)
