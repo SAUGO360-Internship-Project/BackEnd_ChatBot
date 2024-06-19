@@ -139,7 +139,7 @@ def validate_password(password):
 
 def get_embeddings(text):
     response = client.embeddings.create(
-        model="text-embedding-ada-002",
+        model="text-embedding-3-small",
         input=text,
         encoding_format="float"
     )
