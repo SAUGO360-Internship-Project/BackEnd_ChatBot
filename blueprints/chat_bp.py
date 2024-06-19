@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
-from model.chat import Chat, Conversation, chat_schema, chats_schema, conversation_schema, conversations_schema
+from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
+
 from extensions import db,get_embeddings,cosine_similarity,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info
 import os
 from sqlalchemy import text
@@ -48,6 +49,14 @@ def get_conversations(chat_id):
         print(f"Error retrieving conversations: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
+@chat_bp.route('/conversations/<int:conversation_id>', methods=['GET'])
+def get_conversation(conversation_id):
+    conversation = Conversation.query.get(conversation_id)
+    if not conversation:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    return jsonify(conversation_schema.dump(conversation))
+
 # Endpoint to get all chats
 @chat_bp.route('/chats', methods=['GET'])
 def get_all_chats():
@@ -58,7 +67,7 @@ def get_all_chats():
         print(f"Error retrieving chats: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
-
+#Main asking route
 @chat_bp.route('/ask', methods=['POST'])
 def ask():
     data = request.json
@@ -141,6 +150,33 @@ def ask():
     finally:
         session.close()
 
+#To give feedback
+@chat_bp.route('/feedback', methods=['POST'])
+def submit_feedback():
+    data = request.json
+    conversation_id = data.get('conversation_id')
+    feedback_type = data.get('feedback_type', 'none')
+    feedback_comment = data.get('feedback_comment', '')
+
+    if not conversation_id or not feedback_type:
+        return jsonify({"error": "conversation_id and feedback_type are required"}), 400
+
+    feedback = Feedback(
+        conversation_id=conversation_id,
+        feedback_type=feedback_type,
+        feedback_comment=feedback_comment
+    )
+
+    db.session.add(feedback)
+    db.session.commit()
+
+    return jsonify({"message": "Feedback submitted successfully"}), 201
+
+#To get feedback about a convo
+@chat_bp.route('/feedback/<int:conversation_id>', methods=['GET'])
+def get_feedback_for_conversation(conversation_id):
+    feedbacks = Feedback.query.filter_by(conversation_id=conversation_id).all()
+    return jsonify(feedbacks_schema.dump(feedbacks))
 
 def generate_sql_query(user_question, conversation_history):
     few_shot_examples = FewShot.query.all()
@@ -195,3 +231,5 @@ def format_response_with_gpt(user_question, data):
         max_tokens=150
     )
     return response.choices[0].message.content.strip()
+
+
