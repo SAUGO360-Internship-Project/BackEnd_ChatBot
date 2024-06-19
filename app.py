@@ -66,9 +66,6 @@ app.register_blueprint(chat_bp, url_prefix='/chat')
 app.register_blueprint(fewshot_bp, url_prefix='/fewshot')
 
 
-
-
-
 #funciton to form the address link 
 # def get_google_maps_link(address):
 #     # Geocoding an address
