@@ -168,10 +168,13 @@ def extract_name_from_question(question):
     match = re.search(r'\b[A-Z][a-z]*\b', question)
     return match.group(0) if match else None
 
-# Function to check for sensitive information
+# Function to detect sensitive info
 def contains_sensitive_info(question):
-    sensitive_keywords = ['password', 'user credential', 'api key', 'secret', 'token', 'id', 'primary key']
-    return any(keyword in question.lower() for keyword in sensitive_keywords)
+    sensitive_keywords = ['password', 'user credential', 'api key', 'secret', 'token', 'primary key']
+    # Compile regex patterns for each keyword with word boundaries
+    patterns = [re.compile(rf'\b{keyword}\b', re.IGNORECASE) for keyword in sensitive_keywords]
+    return any(pattern.search(question) for pattern in patterns)
+
 
 
 # Function to check for data-altering operations
