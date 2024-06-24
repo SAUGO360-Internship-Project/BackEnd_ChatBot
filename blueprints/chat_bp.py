@@ -32,6 +32,42 @@ def create_chat():
         print(f"Error creating chat: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
+#endpoint to delete a chat
+@chat_bp.route('/chats/<int:chat_id>', methods=['DELETE'])
+def delete_chat(chat_id):
+    try:
+        chat = Chat.query.get(chat_id)
+        if not chat:
+            return jsonify({"error": "Chat not found"}), 404
+
+        db.session.delete(chat)
+        db.session.commit()
+
+        return jsonify({"message": "Chat deleted successfully"}), 200
+    except Exception as e:
+        print(f"Error deleting chat: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
+
+#endpoint to update the title of a chat
+@chat_bp.route('/chats/<int:chat_id>', methods=['PUT'])
+def update_chat_title(chat_id):
+    try:
+        data = request.json
+        new_title = data.get('title')
+        if not new_title:
+            return jsonify({"error": "Title is required"}), 400
+
+        chat = Chat.query.get(chat_id)
+        if not chat:
+            return jsonify({"error": "Chat not found"}), 404
+
+        chat.title = new_title
+        db.session.commit()
+
+        return jsonify({"message": "Chat title updated successfully", "chat": chat_schema.dump(chat)}), 200
+    except Exception as e:
+        print(f"Error updating chat title: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 # Endpoint to get all conversations for a chat
 @chat_bp.route('/chats/<int:chat_id>/conversations', methods=['GET'])
@@ -239,9 +275,9 @@ def generate_sql_query(user_question, conversation_history,feedback_comment):
     return sql_query
 
 
-def format_response_with_gpt(user_question, data,previous_conversation_str,feedback_comment):
-    if feedback_comment:
-        feedback_prompt=f"The user also gave the following feedback about the most recent response that he received, so the answer is considered to be corrected according to his feedback: \"{feedback_comment}\""
+def format_response_with_gpt(user_question, data, previous_conversation_str, feedback_comment=None):
+    feedback_prompt = f"The user also gave the following feedback about the most recent response that he received, so the answer is considered to be corrected according to his feedback: \"{feedback_comment}\"" if feedback_comment else ""
+    
     prompt = f"""
     This is the conversation history with the user:
     {previous_conversation_str}
@@ -252,12 +288,15 @@ def format_response_with_gpt(user_question, data,previous_conversation_str,feedb
     
     Format this answer in a user-friendly way and a full brief sentence.
     """
+    
     response = client.chat.completions.create(
         model='gpt-4o',  
         messages=[{"role": "system", "content": prompt}],
         max_tokens=150
     )
+    
     return response.choices[0].message.content.strip()
+
 
 
 def ask_helper(user_question, chat_id, feedback_comment):

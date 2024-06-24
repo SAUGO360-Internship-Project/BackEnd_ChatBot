@@ -47,7 +47,7 @@ class Chat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    conversations = db.relationship('Conversation', backref='chat', lazy=True)
+    conversations = db.relationship('Conversation', backref='chat', lazy=True, cascade='all, delete-orphan')
 
     def __init__(self, title):
         self.title = title
