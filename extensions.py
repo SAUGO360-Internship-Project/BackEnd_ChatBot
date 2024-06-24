@@ -157,22 +157,6 @@ def get_embeddings(text):
     )
     return response.data[0].embedding 
 
-def cosine_similarity(vec1, vec2):
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-
-# def select_relevant_few_shots(user_question, few_shot_examples, top_n=3):
-#     user_embedding = get_embeddings(user_question)
-#     similarities = []
-
-#     for example in few_shot_examples:
-#         example_embedding = get_embeddings(example.question)
-#         similarity = cosine_similarity(user_embedding, example_embedding)
-#         similarities.append((example, similarity))
-
-#     # Sort examples by similarity and select top_n
-#     similarities.sort(key=lambda x: x[1], reverse=True)
-#     relevant_examples = [ex[0] for ex in similarities[:top_n]]
-#     return relevant_examples
 
 def select_relevant_few_shots(user_question, top_n=5):
     user_embedding = get_embeddings(user_question)
