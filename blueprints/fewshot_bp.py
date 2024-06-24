@@ -1,57 +1,24 @@
-# from flask import Blueprint, request, jsonify
-# from model.few_shot import FewShot, few_shot_schema, few_shot_schemas
-# from extensions import db
-
-# fewshot_bp = Blueprint('fewshot_bp', __name__)
-
-# @fewshot_bp.route('/fewshot', methods=['POST'])
-# def add_few_shot():
-#     data = request.json
-#     question = data.get('question')
-#     sql_query = data.get('sql_query')
-
-#     if not question or not sql_query:
-#         return jsonify({"error": "Question and SQL query are required"}), 400
-
-#     few_shot = FewShot(question=question, sql_query=sql_query)
-#     db.session.add(few_shot)
-#     db.session.commit()
-
-#     return jsonify(few_shot_schema.dump(few_shot)), 201
-
-# @fewshot_bp.route('/fewshot', methods=['GET'])
-# def get_few_shots():
-#     few_shots = FewShot.query.all()
-#     return jsonify(few_shot_schemas.dump(few_shots))
-
-# @fewshot_bp.route('/fewshot/<int:id>', methods=['DELETE'])
-# def delete_few_shot(id):
-#     few_shot = FewShot.query.get(id)
-#     if not few_shot:
-#         return jsonify({"error": "Example not found"}), 404
-
-#     db.session.delete(few_shot)
-#     db.session.commit()
-#     return '', 204
-
-
-
 from flask import Blueprint, request, jsonify
 import chromadb
-import numpy as np
-from openai import OpenAI
-import os
+from chromadb.config import Settings
 from extensions import get_embeddings
-
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-# Initialize Chroma client and connect to the collection
-chroma_client = chromadb.Client()
-collection_name = "few_shot"
-collection = chroma_client.get_collection(name=collection_name)
-
+import hashlib
+import chromadb.utils.embedding_functions as embedding_functions
+import os
 
 fewshot_bp = Blueprint('fewshot_bp', __name__)
+
+# Initialize ChromaDB client with a persistent local path
+client = chromadb.PersistentClient(path="chroma_data", settings=Settings())
+
+openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=str(os.getenv('OPENAI_API_KEY')),
+                model_name="text-embedding-3-large"
+            )
+# Get or create the collection
+collection_name = "few_shot"
+collection = client.get_collection(name=collection_name,embedding_function=openai_ef)
+
 
 @fewshot_bp.route('/fewshot', methods=['POST'])
 def add_few_shot():
@@ -63,22 +30,39 @@ def add_few_shot():
         return jsonify({"error": "Question and SQL query are required"}), 400
 
     embedding = get_embeddings(question)
+    
+    # Generate a unique ID for the question
+    unique_id = hashlib.md5(question.encode()).hexdigest()
+
     collection.add(
-        ids=str(question),  # You can use a unique identifier here if needed
+        ids=[unique_id],  # Use the unique ID as the identifier
         embeddings=[embedding],
         metadatas=[{"question": question, "sql_query": sql_query}]
     )
-
-    return jsonify({"message": "Few-shot example added successfully"}), 201
+    return jsonify({"message": "Few-shot example added successfully.", "id": unique_id}), 201
 
 @fewshot_bp.route('/fewshot', methods=['GET'])
 def get_few_shots():
-    results = collection.query(embeddings=[], top_k=5, include_metadatas=True)  # Adjust top_k as needed
-    few_shots = [{"id": result["id"], "question": result["metadata"]["question"], "sql_query": result["metadata"]["sql_query"]} for result in results["matches"]]
-    return jsonify(few_shots),200
+    limit = 3
+    few_shots = []
+    result = collection.get(limit=limit, include=["metadatas"])
+    
+    total_results = len(result['ids'])  # Get the actual number of results
 
-@fewshot_bp.route('/fewshot/<string:question>', methods=['DELETE'])
-def delete_few_shot(question):
-    collection.delete(ids=[question])
-    return '', 204
+    for x in range(total_results):  # Loop through the actual number of results
+        few_shots.append({
+            "id": result['ids'][x],
+            "question": result['metadatas'][x]['question'],
+            "sql_query": result['metadatas'][x]['sql_query']
+        })
+    return jsonify(few_shots), 200
+
+
+@fewshot_bp.route('/fewshot/<string:id>', methods=['DELETE'])
+def delete_few_shot(id):
+    try:
+        collection.delete(ids=[id])
+        return jsonify({"message": "Few-shot example deleted successfully."}), 204
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
