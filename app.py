@@ -17,7 +17,7 @@ from openai import OpenAI
 
 
 # Import extensions
-from extensions import db, ma, bcrypt, migrate, get_embeddings,cosine_similarity,select_relevant_few_shots,extract_name_from_question,contains_sensitive_info,contains_data_altering_operations
+from extensions import db, ma, bcrypt, migrate, get_embeddings,select_relevant_few_shots,extract_name_from_question,contains_sensitive_info,contains_data_altering_operations
 from model.user import User, user_schema
 from blueprints.user_bp import user_bp
 from blueprints.chat_bp import chat_bp,generate_sql_query,format_response_with_gpt
