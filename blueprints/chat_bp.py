@@ -27,7 +27,7 @@ def create_chat():
         db.session.add(chat)
         db.session.commit()
 
-        return jsonify(chat_schema.dump(chat))
+        return jsonify(chat_schema.dump(chat)),201
     except Exception as e:
         print(f"Error creating chat: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
@@ -38,7 +38,7 @@ def create_chat():
 def get_conversations(chat_id):
     try:
         conversations = Conversation.query.filter_by(chat_id=chat_id).all()
-        return jsonify(conversations_schema.dump(conversations))
+        return jsonify(conversations_schema.dump(conversations)),200
     except Exception as e:
         print(f"Error retrieving conversations: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
@@ -49,14 +49,14 @@ def get_conversation(conversation_id):
     if not conversation:
         return jsonify({"error": "Conversation not found"}), 404
 
-    return jsonify(conversation_schema.dump(conversation))
+    return jsonify(conversation_schema.dump(conversation)),200
 
 # Endpoint to get all chats
 @chat_bp.route('/chats', methods=['GET'])
 def get_all_chats():
     try:
         chats = Chat.query.all()
-        return jsonify(chats_schema.dump(chats))
+        return jsonify(chats_schema.dump(chats)),200
     except Exception as e:
         print(f"Error retrieving chats: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
@@ -109,7 +109,7 @@ def submit_feedback():
 @chat_bp.route('/feedback/<int:conversation_id>', methods=['GET'])
 def get_feedback_for_conversation(conversation_id):
     feedbacks = Feedback.query.filter_by(conversation_id=conversation_id).all()
-    return jsonify(feedbacks_schema.dump(feedbacks))
+    return jsonify(feedbacks_schema.dump(feedbacks)),200
 
 
 #Main asking route
@@ -163,7 +163,7 @@ def ask():
     print(sql_query)
 
     if sql_query == "This question asks for sensitive content and I am not allowed to answer it.":
-        return jsonify({"response": sql_query}), 201
+        return jsonify({"response": sql_query}), 403
     
     # Check for data-altering operations
     if contains_data_altering_operations(sql_query):
