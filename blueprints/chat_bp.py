@@ -5,7 +5,6 @@ from extensions import db,get_embeddings,select_relevant_few_shots,contains_data
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
-from model.few_shot import FewShot
 import chromadb.utils.embedding_functions as embedding_functions
 import chromadb
 from chromadb.config import Settings
@@ -201,12 +200,15 @@ def ask():
         {
             "role": "system", 
             "content": db_schema_prompt + """
-                The user will be asking you questions about a database whose schema is illustrated above.
-                Your main goal is to generate SQL queries that fetch the information that he needs.
-                IMPORTANT NOTE: Do not generate or retrieve sensitive information such as passwords, primary keys, IDs, user credentials, or API keys.
-                Do not generate SQL queries that have data-altering operations such as DELETE or UPDATE.
+                The user will be asking questions about a database with the schema described above.
+                The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
+                Your primary objective is to convert each question to a single SQL query to fetch the required information without any additional text or explanation. It has to be compatible with PostgreSQL and you must adhere to the following guidelines:
+
+                1) Data Sensitivity: Do not generate or retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
+                2) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
+                3) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions.
                 If the user question prompts you to generate a SQL query that violates any of the previous rules, simply respond with "This question asks for sensitive content and I am not allowed to answer it."
-                You must be able to understand context as the user might ask you follow-up questions.
+                Location-related information (such as address, city, state) is not considered sensitive unless combined with other sensitive data. You are allowed to retrieve location-related information as long as it does not include sensitive data like passwords, primary keys, IDs, or API keys.
             """
         }
     ]
@@ -214,7 +216,7 @@ def ask():
     # Append previous conversations in alternating user and assistant roles
     for convo in previous_conversations:
         conversation_history.append({"role": "user", "content": convo.user_query})
-        conversation_history.append({"role": "assistant", "content": convo.response})
+        conversation_history.append({"role": "assistant", "content": convo.sql_query})
 
     # Add the current user question
     conversation_history.append({"role": "user", "content": user_question})
@@ -266,9 +268,7 @@ def generate_sql_query(user_question, conversation_history, feedback_comment):
     conversation_history[0]["content"] += f"\nThe following are examples of User questions and corresponding SQL queries. You must generate a response similar to these:\n{example_texts}"
     
     if feedback_comment:
-        conversation_history[0]["content"] += f"\nThe user gave feedback on the most recent response that you gave him and you must adjust your new response accordingly; this is his feedback: \"{feedback_comment}\"\nConvert his question to a single SQL query without any additional text or explanation."
-    else:
-        conversation_history[0]["content"] += f"\nConvert questions to a single SQL query without any additional text or explanation."
+        conversation_history[0]["content"] += f"\nThe user gave feedback on the most recent response that you gave him and you must adjust your new response to the same question accordingly; this is his feedback: \"{feedback_comment}\"\n"
 
     print(conversation_history)
     response = client.chat.completions.create(
