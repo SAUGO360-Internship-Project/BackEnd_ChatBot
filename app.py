@@ -23,7 +23,6 @@ from blueprints.user_bp import user_bp
 from blueprints.chat_bp import chat_bp,generate_sql_query,format_response_with_gpt
 from blueprints.fewshot_bp import fewshot_bp  # Import fewshot_bp
 from model.chat import Chat, Conversation, chat_schema, conversation_schema
-from model.few_shot import FewShot
 from model.test import CustomerProfile, Product, PurchaseHistory
 
 # Load environment variables
