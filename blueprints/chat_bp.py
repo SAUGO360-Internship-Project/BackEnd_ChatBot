@@ -137,16 +137,16 @@ def submit_feedback():
     db.session.add(feedback)
     db.session.commit()
 
-    if feedback_type == 'positive':
-        embedding = get_embeddings(conversation.user_query)
-        # Generate a unique ID for the question
-        unique_id = hashlib.md5(conversation.user_query.encode()).hexdigest()
-        collection.add(
-            ids=[unique_id],
-            embeddings=[embedding],
-            metadatas=[{"question": conversation.user_query, "sql_query": conversation.sql_query}]
-        )
-    elif feedback_type == 'negative':
+    # if feedback_type == 'positive':
+    #     embedding = get_embeddings(conversation.user_query)
+    #     # Generate a unique ID for the question
+    #     unique_id = hashlib.md5(conversation.user_query.encode()).hexdigest()
+    #     collection.add(
+    #         ids=[unique_id],
+    #         embeddings=[embedding],
+    #         metadatas=[{"question": conversation.user_query, "sql_query": conversation.sql_query}]
+    #     )
+    if feedback_type == 'negative':
         # Regenerate response using the `ask` function
         regenerated_response = ask_helper(conversation.user_query, conversation.chat_id, feedback_comment)
         if regenerated_response:
@@ -204,11 +204,12 @@ def ask():
                 The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
                 Your primary objective is to convert each question to a single SQL query to fetch the required information without any additional text or explanation. It has to be compatible with PostgreSQL and you must adhere to the following guidelines:
 
-                1) Data Sensitivity: Do not generate or retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
+                1) Data Sensitivity: Do not retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
                 2) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
                 3) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions.
+                4) Location-related information (such as address, city, state) and contact information are not considered sensitive.
                 If the user question prompts you to generate a SQL query that violates any of the previous rules, simply respond with "This question asks for sensitive content and I am not allowed to answer it."
-                Location-related information (such as address, city, state) is not considered sensitive unless combined with other sensitive data. You are allowed to retrieve location-related information as long as it does not include sensitive data like passwords, primary keys, IDs, or API keys.
+                
             """
         }
     ]
@@ -219,7 +220,9 @@ def ask():
         conversation_history.append({"role": "assistant", "content": convo.sql_query})
 
     # Add the current user question
-    conversation_history.append({"role": "user", "content": user_question})
+    if not feedback_comment:
+        conversation_history.append({"role": "user", "content": user_question})
+
     
     # Generate SQL query
     sql_query = generate_sql_query(user_question, conversation_history,feedback_comment)
@@ -265,11 +268,11 @@ def generate_sql_query(user_question, conversation_history, feedback_comment):
     )
 
     # Append examples and instructions to the system message
-    conversation_history[0]["content"] += f"\nThe following are examples of User questions and corresponding SQL queries. You must generate a response similar to these:\n{example_texts}"
+    conversation_history[0]["content"] += f"\nThe following are examples of User questions and corresponding SQL queries for you to know how to format your answer:\n{example_texts}"
     
     if feedback_comment:
-        conversation_history[0]["content"] += f"\nThe user gave feedback on the most recent response that you gave him and you must adjust your new response to the same question accordingly; this is his feedback: \"{feedback_comment}\"\n"
-
+        # conversation_history[0]["content"] += f"\nThe user gave feedback on the most recent response that the assistant gave him and you must adjust your new response to the accordingly; this is his feedback: \"{feedback_comment}\"\n"
+        conversation_history.append({"role":"user","content": f"{user_question} , extra feedback on how to answer the question: {feedback_comment}"})
     print(conversation_history)
     response = client.chat.completions.create(
         model='gpt-4o',
