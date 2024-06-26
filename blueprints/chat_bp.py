@@ -151,6 +151,7 @@ def submit_feedback():
         regenerated_response = ask_helper(conversation.user_query, conversation.chat_id, feedback_comment)
         if regenerated_response:
             conversation.response = regenerated_response
+            print(regenerated_response)
             db.session.commit()
         else:
             return jsonify({"error": "Failed to regenerate response"}), 500
@@ -264,7 +265,7 @@ def generate_sql_query(user_question, conversation_history, feedback_comment):
     relevant_examples = select_relevant_few_shots(user_question, top_n=5)
 
     example_texts = "\n".join(
-        [f"Question: \"{ex['question']}\"\nSQL: \"{ex['sql_query']}\"" for ex in relevant_examples]
+        [f"Question: \"{ex['question']}\"\n \"{ex['sql_query']}\"" for ex in relevant_examples]
     )
 
     # Append examples and instructions to the system message
