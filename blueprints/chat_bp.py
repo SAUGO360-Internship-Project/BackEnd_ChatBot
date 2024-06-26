@@ -153,6 +153,7 @@ def submit_feedback():
             conversation.response = regenerated_response
             print(regenerated_response)
             db.session.commit()
+            return jsonify({"response": regenerated_response}), 201
         else:
             return jsonify({"error": "Failed to regenerate response"}), 500
 
