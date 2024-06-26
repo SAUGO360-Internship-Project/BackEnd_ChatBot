@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,classify_question
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -182,16 +182,16 @@ def ask():
     if contains_sensitive_info(user_question):
         return jsonify({"response": "This question asks for sensitive content and I am not allowed to answer it."}), 403
     
-     # Check if the question is about location
-    # if any(keyword in user_question.lower() for keyword in ["location", "address", "where", "located"]):
+    # # Check if the question is about location
+    # if any(keyword in user_question.lower() for keyword in ["location", "address", "where", "directions", "house", "home"]):
     #     name = extract_name_from_question(user_question)
     #     if not name:
     #         return jsonify({"error": "Could not determine the name from the question"}), 400
     #     maps_link = fetch_address_and_generate_link(name)
     #     if not maps_link:
     #         return jsonify({"error": "Could not find the address for the specified person"}), 404
-    #     return jsonify({"response": f"The address for {name} is: {maps_link}"})
-
+    #     return jsonify({"response": f"The address for {name} is: {maps_link['address']}. Here is the Google Maps link: {maps_link['google_maps_link']}"})
+    
     # Fetch previous conversations for context
     previous_conversations = Conversation.query.filter_by(chat_id=chat_id).order_by(Conversation.timestamp).all()
     
@@ -208,7 +208,7 @@ def ask():
                 1) Data Sensitivity: Do not retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
                 2) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
                 3) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions.
-                4) Location-related information (such as address, city, state) and contact information are not considered sensitive.
+                4) Location-related information (such as address, city, state) and contact information are not considered sensitive. If the user asks for a location of a person then you must fetch the full address of that person.
                 If the user question prompts you to generate a SQL query that violates any of the previous rules, simply respond with "This question asks for sensitive content and I am not allowed to answer it."
                 
             """
@@ -243,9 +243,14 @@ def ask():
         result = session.execute(text(sql_query)).fetchall() 
 
         print(f"SQL Query Result: {result}") 
-
-        # Format the result with GPT-4
-        formatted_response = format_response_with_gpt(user_question, result, previous_conversations,feedback_comment)
+        classification= classify_question(user_question)
+        if classification=="location":
+            address = format_address(result)
+            map_url = get_google_maps_url(address)
+            formatted_response = f"Here is the map to {address}: {map_url}"
+        else:
+            # Format the result with GPT-4
+            formatted_response = format_response_with_gpt(user_question, result, previous_conversations, feedback_comment)
         
         # Store the conversation
         conversation = Conversation(chat_id=chat_id, user_query=user_question, response=formatted_response, sql_query=sql_query)

@@ -17,7 +17,7 @@ from openai import OpenAI
 
 
 # Import extensions
-from extensions import db, ma, bcrypt, migrate, get_embeddings,select_relevant_few_shots,extract_name_from_question,contains_sensitive_info,contains_data_altering_operations
+from extensions import db, ma, bcrypt, migrate, get_embeddings,select_relevant_few_shots,contains_sensitive_info,contains_data_altering_operations
 from model.user import User, user_schema
 from blueprints.user_bp import user_bp
 from blueprints.chat_bp import chat_bp,generate_sql_query,format_response_with_gpt
@@ -63,44 +63,6 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 app.register_blueprint(user_bp, url_prefix='/user')
 app.register_blueprint(chat_bp, url_prefix='/chat')
 app.register_blueprint(fewshot_bp, url_prefix='/fewshot')
-
-
-#funciton to form the address link 
-# def get_google_maps_link(address):
-#     # Geocoding an address
-#     geocode_result = gmaps.geocode(address)
-
-#     if geocode_result:
-#         lat = geocode_result[0]['geometry']['location']['lat']
-#         lng = geocode_result[0]['geometry']['location']['lng']
-#         google_maps_link = f"https://www.google.com/maps?q={lat},{lng}"
-#         return google_maps_link
-#     else:
-#         return None
-   
-#function to fetch the locations from the database and generate a link to google maps
-# def fetch_address_and_generate_link(name):
-#     try:
-#         # Get the appropriate session with the bind key
-#         engine = db.get_engine(app, bind='TestingData')
-#         session = engine.connect()
-
-#         customer = CustomerProfile.query.filter_by(first_name=name).first()
-#         if not customer:
-#             return None
-        
-#         address = f"{customer.address}, {customer.city}, {customer.state}, {customer.zip_code}"
-        
-#         google_maps_link = get_google_maps_link(address)
-        
-#         return {"address": address, "google_maps_link": google_maps_link}
-        
-#     except Exception as e:
-#         print(f"Error: {e}")
-#         return None
-#     finally:
-#         session.close()
-        
 
 
 @app.route('/')

@@ -10,6 +10,7 @@ import numpy as np
 import chromadb
 import chromadb.utils.embedding_functions as embedding_functions
 from chromadb.config import Settings
+import googlemaps
 
 
 # Initialize ChromaDB client with a persistent local path
@@ -27,6 +28,8 @@ collection = client_chroma.get_collection(name=collection_name,embedding_functio
 SECRET_KEY= os.getenv('SECRET_KEY')
 
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+gmaps = googlemaps.Client(key=os.getenv('GOOGLE_MAPS_API_KEY'))
 
 
 db = SQLAlchemy()
@@ -173,11 +176,6 @@ def select_relevant_few_shots(user_question, top_n=5):
                 "sql_query": metadata.get('sql_query')
             })
     return relevant_examples
-#function to exctract the name from the question
-def extract_name_from_question(question):
-    # Simple regex to extract a name (assuming the name is a single word, adjust as necessary)
-    match = re.search(r'\b[A-Z][a-z]*\b', question)
-    return match.group(0) if match else None
 
 # Function to detect sensitive info
 def contains_sensitive_info(question):
@@ -192,3 +190,88 @@ def contains_sensitive_info(question):
 def contains_data_altering_operations(sql_query):
     altering_keywords = ['delete', 'update', 'insert', 'alter', 'drop', 'create']
     return any(keyword in sql_query.lower() for keyword in altering_keywords)
+
+
+
+# Helper function to format the address from the SQL result
+def format_address(result):
+    if not result or len(result) == 0:
+        return None
+    address_data = result[0]
+    address_parts = [str(part) for part in address_data if part]
+    print(", ".join(address_parts))
+    return ", ".join(address_parts)
+
+# Helper function to get Google Maps URL
+def get_google_maps_url(address):
+    if not address:
+        return None
+    geocode_result = gmaps.geocode(address)
+    if geocode_result:
+        location = geocode_result[0]['geometry']['location']
+        print(location)
+        lat, lng = location['lat'], location['lng']
+        return f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
+    return None
+
+
+
+def classify_question(user_question):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": 
+                '''
+                You will be given a question or a statement. 
+                If the sentence asks about a location or directions, simply reply with "location". If it doesn't, reply with "no".
+                '''
+            },
+            {
+                "role": "user",
+                "content": "Take me to Charlie's house"
+            },
+            {
+                "role": "assistant",
+                "content": "location"
+            },
+            {
+                "role": "user",
+                "content": "What is the weather today?"
+            },
+            {
+                "role": "assistant",
+                "content": "no"
+            },
+            {
+                "role": "user",
+                "content": "What is the address of Robert?"
+            },
+            {
+                "role": "assistant",
+                "content": "location"
+            },
+            {
+                "role": "user",
+                "content": "How much did James pay last year?"
+            },
+            {
+                "role": "assistant",
+                "content": "no"
+            },
+            {
+                "role": "user",
+                "content": "Residence of Jessica Garcia."
+            },
+            {
+                "role": "assistant",
+                "content": "location"
+            },
+            {
+                "role": "user",
+                "content": user_question
+            }
+        ]
+    )
+    return response.choices[0].message.content.strip()
