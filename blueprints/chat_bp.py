@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,classify_question
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,classify_question,create_token,extract_auth_token,decode_token
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -28,32 +28,58 @@ collection = client_chroma.get_collection(name=collection_name,embedding_functio
 with open('db_schema_prompt.txt', 'r') as file:
     db_schema_prompt = file.read()
 
-
-# Endpoint to create a new chat
+# Create a chat
 @chat_bp.route('/chats', methods=['POST'])
 def create_chat():
     try:
         data = request.json
         title = data.get('title')
-        if not title:
-            return jsonify({"error": "Title is required"}), 400
+        
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        try:
+            user_id = decode_token(token)
+        except Exception as e:
+            print(f"Error decoding token: {e}")
+            return jsonify({"error": "Invalid token"}), 401
 
-        chat = Chat(title=title)
-        db.session.add(chat)
+        if not title or not user_id:
+            return jsonify({"error": "Title and user_id are required"}), 400
+
+        new_chat = Chat(title=title, user_id=user_id)
+        db.session.add(new_chat)
         db.session.commit()
-
-        return jsonify(chat_schema.dump(chat)),201
+        return chat_schema.jsonify(new_chat), 201
+    
     except Exception as e:
         print(f"Error creating chat: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
-#endpoint to delete a chat
+
+
+# Delete a chat
 @chat_bp.route('/chats/<int:chat_id>', methods=['DELETE'])
 def delete_chat(chat_id):
     try:
         chat = Chat.query.get(chat_id)
+        
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        try:
+            user_id = decode_token(token)
+        except Exception as e:
+            print(f"Error decoding token: {e}")
+            return jsonify({"error": "Invalid token"}), 401
+
         if not chat:
             return jsonify({"error": "Chat not found"}), 404
+
+        if chat.user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
         db.session.delete(chat)
         db.session.commit()
@@ -63,18 +89,32 @@ def delete_chat(chat_id):
         print(f"Error deleting chat: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
-#endpoint to update the title of a chat
+# Edit chat title
 @chat_bp.route('/chats/<int:chat_id>', methods=['PUT'])
 def update_chat_title(chat_id):
     try:
         data = request.json
         new_title = data.get('title')
+        
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        try:
+            user_id = decode_token(token)
+        except Exception as e:
+            print(f"Error decoding token: {e}")
+            return jsonify({"error": "Invalid token"}), 401
+
         if not new_title:
             return jsonify({"error": "Title is required"}), 400
 
         chat = Chat.query.get(chat_id)
         if not chat:
             return jsonify({"error": "Chat not found"}), 404
+
+        if chat.user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
         chat.title = new_title
         db.session.commit()
@@ -84,30 +124,75 @@ def update_chat_title(chat_id):
         print(f"Error updating chat title: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
+
 # Endpoint to get all conversations for a chat
 @chat_bp.route('/chats/<int:chat_id>/conversations', methods=['GET'])
 def get_conversations(chat_id):
     try:
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        try:
+            user_id = decode_token(token)
+        except Exception as e:
+            print(f"Error decoding token: {e}")
+            return jsonify({"error": "Invalid token"}), 401
+
+        chat = Chat.query.get(chat_id)
+        
+        if not chat:
+            return jsonify({"error": "Chat not found"}), 404
+
+        if chat.user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+
         conversations = Conversation.query.filter_by(chat_id=chat_id).all()
-        return jsonify(conversations_schema.dump(conversations)),200
+        return jsonify(conversations_schema.dump(conversations)), 200
     except Exception as e:
         print(f"Error retrieving conversations: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
-
+    
+# Get a certain conversation
 @chat_bp.route('/conversations/<int:conversation_id>', methods=['GET'])
 def get_conversation(conversation_id):
     conversation = Conversation.query.get(conversation_id)
+    
+    token = extract_auth_token(request)
+    if not token:
+        return jsonify({"error": "Authentication token is required"}), 401
+    
+    try:
+        user_id = decode_token(token)
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        return jsonify({"error": "Invalid token"}), 401
+
     if not conversation:
         return jsonify({"error": "Conversation not found"}), 404
 
-    return jsonify(conversation_schema.dump(conversation)),200
+    chat = Chat.query.get(conversation.chat_id)
+    if chat.user_id != user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    return jsonify(conversation_schema.dump(conversation)), 200
 
 # Endpoint to get all chats
 @chat_bp.route('/chats', methods=['GET'])
 def get_all_chats():
     try:
-        chats = Chat.query.all()
-        return jsonify(chats_schema.dump(chats)),200
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        try:
+            user_id = decode_token(token)
+        except Exception as e:
+            print(f"Error decoding token: {e}")
+            return jsonify({"error": "Invalid token"}), 401
+
+        chats = Chat.query.filter_by(user_id=user_id).all()
+        return chats_schema.jsonify(chats), 200
     except Exception as e:
         print(f"Error retrieving chats: {e}")
         return jsonify({"error": "Internal Server Error"}), 500

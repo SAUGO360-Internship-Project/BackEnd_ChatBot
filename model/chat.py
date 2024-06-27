@@ -1,6 +1,6 @@
 from extensions import db, ma
 from datetime import datetime
-
+from model.user import User
 
 class Feedback(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -47,15 +47,17 @@ class Chat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  
     conversations = db.relationship('Conversation', backref='chat', lazy=True, cascade='all, delete-orphan')
 
-    def __init__(self, title):
+    def __init__(self, title, user_id):
         self.title = title
+        self.user_id = user_id
 
 class ChatSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Chat
-        fields = ("id", "title", "created_at")
+        fields = ("id", "title", "created_at", "user_id") 
 
 
 # Single schema instances
