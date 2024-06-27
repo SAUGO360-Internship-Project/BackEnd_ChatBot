@@ -28,7 +28,7 @@ class Conversation(db.Model):
     response = db.Column(db.String(2000), nullable=False)
     sql_query = db.Column(db.Text, nullable=False)  # Add this field to store the SQL query
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    feedbacks = db.relationship('Feedback', backref='conversation', lazy=True)
+    feedbacks = db.relationship('Feedback', backref='conversation', lazy=True, cascade='all, delete-orphan')
 
     def __init__(self, chat_id, user_query, response, sql_query):
         self.chat_id = chat_id

@@ -12,6 +12,6 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
                 api_key=str(os.getenv('OPENAI_API_KEY')),
                 model_name="text-embedding-3-large"
             )
-# collection= client.create_collection(name=collection_name,embedding_function=openai_ef)
+collection= client.create_collection(name=collection_name,embedding_function=openai_ef)
 print(client.get_collection(name=collection_name,embedding_function=openai_ef))
 
