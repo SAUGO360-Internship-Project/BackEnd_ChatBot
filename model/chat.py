@@ -26,21 +26,27 @@ class Conversation(db.Model):
     chat_id = db.Column(db.Integer, db.ForeignKey('chat.id'), nullable=False)
     user_query = db.Column(db.String(500), nullable=False)
     response = db.Column(db.String(2000), nullable=False)
-    sql_query = db.Column(db.Text, nullable=False)  # Add this field to store the SQL query
+    sql_query = db.Column(db.Text, nullable=False)
+    score = db.Column(db.Integer, nullable=True)  # Score field
+    executable = db.Column(db.String(3), nullable=True)  # Executable field
+    location = db.Column(db.String(3), nullable=True)  # Location field
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    feedbacks = db.relationship('Feedback', backref='conversation', lazy=True, cascade='all, delete-orphan')
 
-    def __init__(self, chat_id, user_query, response, sql_query):
+    def __init__(self, chat_id, user_query, response, sql_query, score=None, executable=None, location=None):
         self.chat_id = chat_id
         self.user_query = user_query
         self.response = response
         self.sql_query = sql_query
+        self.score = score
+        self.executable = executable
+        self.location = location
+
 
 
 class ConversationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Conversation
-        fields = ("id", "chat_id", "user_query", "response", "sql_query", "timestamp")
+        fields = ("id", "chat_id", "user_query", "response", "sql_query","score","executable","location", "timestamp")
 
 
 class Chat(db.Model):
