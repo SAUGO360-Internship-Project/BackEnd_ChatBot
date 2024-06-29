@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,classify_question,create_token,extract_auth_token,decode_token
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,create_token,extract_auth_token,decode_token
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -9,6 +9,7 @@ import chromadb.utils.embedding_functions as embedding_functions
 import chromadb
 from chromadb.config import Settings
 import hashlib
+import json
 
 
 chat_bp = Blueprint('chat_bp', __name__)
@@ -24,6 +25,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 # Get or create the collection
 collection_name = "few_shot"
 collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
+collection_user =client_chroma.get_collection(name="few_shot_users",embedding_function=openai_ef)
 
 with open('db_schema_prompt.txt', 'r') as file:
     db_schema_prompt = file.read()
@@ -222,27 +224,36 @@ def submit_feedback():
     db.session.add(feedback)
     db.session.commit()
 
-    # if feedback_type == 'positive':
-    #     embedding = get_embeddings(conversation.user_query)
-    #     # Generate a unique ID for the question
-    #     unique_id = hashlib.md5(conversation.user_query.encode()).hexdigest()
-    #     collection.add(
-    #         ids=[unique_id],
-    #         embeddings=[embedding],
-    #         metadatas=[{"question": conversation.user_query, "sql_query": conversation.sql_query}]
-    #     )
-    if feedback_type == 'negative':
-        # Regenerate response using the `ask` function
-        regenerated_response = ask_helper(conversation.user_query, conversation.chat_id, feedback_comment)
-        if regenerated_response:
-            conversation.response = regenerated_response
-            print(regenerated_response)
-            db.session.commit()
-            return jsonify({"response": regenerated_response}), 201
-        else:
-            return jsonify({"error": "Failed to regenerate response"}), 500
+    if feedback_type == 'positive':
+        # Extract the fields from the conversation
+        question = conversation.user_query
+        score = conversation.score
+        executable = conversation.executable
+        answer = conversation.sql_query  # Ensure this is the correct field you want to store as 'Answer'
+        location = conversation.location
+
+        # Ensure all fields are available
+        if question and answer and score is not None and executable and location:
+            embedding = get_embeddings(question)
+            
+            # Generate a unique ID for the question
+            unique_id = hashlib.md5(question.encode()).hexdigest()
+
+            # Store in the user-specific collection
+            collection_user.add(
+                ids=[unique_id],  # Use the unique ID as the identifier
+                embeddings=[embedding],
+                metadatas=[{
+                    "Question": question,
+                    "Score": score,
+                    "Executable": executable,
+                    "Answer": answer,
+                    "Location": location
+                }]
+            )
 
     return jsonify({"message": "Feedback submitted successfully"}), 201
+
 
 
 
@@ -258,88 +269,104 @@ def get_feedback_for_conversation(conversation_id):
 def ask():
     data = request.json
     user_question = data.get('question')
-    chat_id = data.get('chat_id')  # Added chat_id to identify the conversation
-    feedback_comment = data.get('feedback_comment', '')  # Optional feedback comment
+    chat_id = data.get('chat_id')
 
     if not user_question or not chat_id:
         return jsonify({"error": "Question and chat_id are required"}), 400
-    
+
     # Check for sensitive information
     if contains_sensitive_info(user_question):
         return jsonify({"response": "This question asks for sensitive content and I am not allowed to answer it."}), 403
-    
-    # # Check if the question is about location
-    # if any(keyword in user_question.lower() for keyword in ["location", "address", "where", "directions", "house", "home"]):
-    #     name = extract_name_from_question(user_question)
-    #     if not name:
-    #         return jsonify({"error": "Could not determine the name from the question"}), 400
-    #     maps_link = fetch_address_and_generate_link(name)
-    #     if not maps_link:
-    #         return jsonify({"error": "Could not find the address for the specified person"}), 404
-    #     return jsonify({"response": f"The address for {name} is: {maps_link['address']}. Here is the Google Maps link: {maps_link['google_maps_link']}"})
-    
+
     # Fetch previous conversations for context
     previous_conversations = Conversation.query.filter_by(chat_id=chat_id).order_by(Conversation.timestamp).all()
-    
-    
+
     # Create the system message with all instructions and context
     conversation_history = [
         {
-            "role": "system", 
+            "role": "system",
             "content": db_schema_prompt + """
-                The user will be asking questions about a database with the schema described above.
+                The user will be asking questions about a database with the schema described above. 
                 The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
-                Your primary objective is to convert each question to a single SQL query to fetch the required information without any additional text or explanation. It has to be compatible with PostgreSQL and you must adhere to the following guidelines:
-
-                1) Data Sensitivity: Do not retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
-                2) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
-                3) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions.
-                4) Location-related information (such as address, city, state) and contact information are not considered sensitive. If the user asks for a location of a person then you must fetch the full address of that person.
-                If the user question prompts you to generate a SQL query that violates any of the previous rules, simply respond with "This question asks for sensitive content and I am not allowed to answer it."
-                
+                Guidelines:
+                1) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
+                2) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
+                3) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
+                Your primary objective is to read each question and return 4 fields as JSON string as follows:
+                {
+                    "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Answer with only an integer number.
+                    "Executable": "Yes" or "No" between double quotations based on the guidelines listed above. An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field.                    
+                    "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL.
+                    "Location": Does the user sentence or question ask about a location or directions? Answer with "Yes" or "No" between double quotations.
+                }
+                Important Notes:
+                1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message where he means that he wants the second option. 
+                2) Location-related information (such as address, city, state) and contact information are not considered sensitive and you may retrieve them. If the user asks a location related question then you must fetch the full address that answers that question. When you write queries that fetch state or city, the data may be stored as an abbreviation; example: "California" and "CA".
             """
         }
     ]
 
     # Append previous conversations in alternating user and assistant roles
     for convo in previous_conversations:
-        conversation_history.append({"role": "user", "content": convo.user_query})
-        conversation_history.append({"role": "assistant", "content": convo.sql_query})
+        user_query_with_feedback = convo.user_query
+        feedbacks = Feedback.query.filter_by(conversation_id=convo.id, feedback_type='negative').all()
+        for feedback in feedbacks:
+            user_query_with_feedback += f" (Negative feedback on assistant response: {feedback.feedback_comment})"
+        conversation_history.append({"role": "user", "content": user_query_with_feedback})
+        conversation_history.append({
+            "role": "assistant",
+            "content": json.dumps({
+                "Score": convo.score,
+                "Executable": convo.executable,
+                "Answer": convo.sql_query,
+                "Location": convo.location
+            })
+        })
+
 
     # Add the current user question
-    if not feedback_comment:
-        conversation_history.append({"role": "user", "content": user_question})
+    conversation_history.append({"role": "user", "content": user_question})
 
-    
-    # Generate SQL query
-    sql_query = generate_sql_query(user_question, conversation_history,feedback_comment)
-    print(sql_query)
+    # Generate SQL query and extract relevant fields
+    sql_query, score, executable, location = generate_sql_query(user_question, conversation_history)
 
-    if sql_query == "This question asks for sensitive content and I am not allowed to answer it.":
-        return jsonify({"response": sql_query}), 403
-    
+    if executable == "No":
+        return jsonify({"response": "This question asks for sensitive content and I am not allowed to answer it."}), 403
+
     # Check for data-altering operations
     if contains_data_altering_operations(sql_query):
         return jsonify({"response": "Data-altering operations are not allowed."}), 403
-    
-   
+
     try:
         engine = db.get_engine(current_app, bind='TestingData')
         session = engine.connect()
-        result = session.execute(text(sql_query)).fetchall() 
+        result = session.execute(text(sql_query)).fetchall()
 
-        print(f"SQL Query Result: {result}") 
-        classification= classify_question(user_question)
-        if classification=="location":
-            address = format_address(result)
-            map_url = get_google_maps_url(address)
-            formatted_response = f"Here is the map to {address}: {map_url}"
+        print(f"SQL Query Result: {result}")
+        if location == "Yes":
+            if len(result) > 1:
+                # addresses = [", ".join(map(str, row)) for row in result]
+                # address_list = "\n".join([f"{i+1}. {address}" for i, address in enumerate(addresses)])
+                # formatted_response = f"Multiple results found. Please specify which address you are referring to:\n{address_list}"
+                formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+            else:
+                address = format_address(result)
+                map_url = get_google_maps_url(address)
+                formatted_response = f"Here is the map to {address}: {map_url}"
         else:
             # Format the result with GPT-4
-            formatted_response = format_response_with_gpt(user_question, result, previous_conversations, feedback_comment)
-        
+            formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+
         # Store the conversation
-        conversation = Conversation(chat_id=chat_id, user_query=user_question, response=formatted_response, sql_query=sql_query)
+        conversation = Conversation(
+            chat_id=chat_id,
+            user_query=user_question,
+            response=formatted_response,
+            sql_query=sql_query,
+            score=score,
+            executable=executable,
+            location=location
+        )
         db.session.add(conversation)
         db.session.commit()
 
@@ -352,50 +379,71 @@ def ask():
 
 
 
-def generate_sql_query(user_question, conversation_history, feedback_comment):
-    relevant_examples = select_relevant_few_shots(user_question, top_n=5)
+
+def generate_sql_query(user_question, conversation_history):
+    relevant_examples = select_relevant_few_shots(user_question, top_n_main=5,top_n_user=2,distance_threshold=1.5)
 
     example_texts = "\n".join(
-        [f"Question: \"{ex['question']}\"\n \"{ex['sql_query']}\"" for ex in relevant_examples]
+    [f"User Question: \"{ex['Question']}\"\n \"Score: {ex['Score']}\nExecutable: {ex['Executable']}\nAnswer: {ex['Answer']}\nLocation: {ex['Location']}\"" for ex in relevant_examples]
     )
 
     # Append examples and instructions to the system message
-    conversation_history[0]["content"] += f"\nThe following are examples of User questions and corresponding SQL queries for you to know how to format your answer:\n{example_texts}"
+    conversation_history[0]["content"] += f"\nThe following are examples of User questions and corresponding replies:\n{example_texts}"
     
-    if feedback_comment:
-        # conversation_history[0]["content"] += f"\nThe user gave feedback on the most recent response that the assistant gave him and you must adjust your new response to the accordingly; this is his feedback: \"{feedback_comment}\"\n"
-        conversation_history.append({"role":"user","content": f"{user_question} , extra feedback on how to answer the question: {feedback_comment}"})
     print(conversation_history)
     response = client.chat.completions.create(
         model='gpt-4o',
         messages=conversation_history,
         max_tokens=150
     )
-    sql_query = response.choices[0].message.content.strip()
+    gpt_response = response.choices[0].message.content.strip()
+    print(gpt_response)
 
-    # Remove any non-SQL parts (e.g., markdown or explanations)
-    if "```sql" in sql_query:
-        sql_query = sql_query.split("```sql")[1].split("```")[0].strip()
-        
+    try:
+        response_json = json.loads(gpt_response)
+        score = response_json["Score"]
+        executable = response_json["Executable"]
+        sql_query = response_json["Answer"]
+        location = response_json["Location"]
+    except json.JSONDecodeError:
+        score = None
+        executable = "No"
+        sql_query = "NULL"
+        location = "No"
+
     # Replace MONTH and YEAR functions with EXTRACT for PostgreSQL compatibility
-    sql_query = sql_query.replace("MONTH(", "EXTRACT(MONTH FROM ")
-    sql_query = sql_query.replace("YEAR(", "EXTRACT(YEAR FROM ")
-    
-    return sql_query
+    if sql_query != "NULL":
+        sql_query = sql_query.replace("MONTH(", "EXTRACT(MONTH FROM ")
+        sql_query = sql_query.replace("YEAR(", "EXTRACT(YEAR FROM ")
+
+    return sql_query, score, executable, location
 
 
 
-def format_response_with_gpt(user_question, data, previous_conversations, feedback_comment=None):
-    feedback_prompt = f"Feedback: here is my feedback about the most recent response that I received: \"{feedback_comment}\", " if feedback_comment else ""
+
+def format_response_with_gpt(user_question, data, previous_conversations):
     message=[{"role":"system","content":
                 '''
                 Your goal is to format the final answer given by the user in a user-friendly way and a full brief sentence taking into consideration his feedback if he has any.
+                If multiple answers are given then you must format them in the following manner:
+                *Brief introductory sentence*:
+                *Numbered List*
+                1) ...
+                2) ...
+                3) ...
+                *Question asking the user to choose*   
                 '''
               }]
     for convo in previous_conversations:
-        message.append({"role": "user", "content": convo.user_query})
+        user_query_with_feedback = convo.user_query
+        feedbacks = Feedback.query.filter_by(conversation_id=convo.id, feedback_type='negative').all()
+        for feedback in feedbacks:
+            user_query_with_feedback += f" (Negative feedback on assistant response: {feedback.feedback_comment})"
+        message.append({"role": "user", "content": user_query_with_feedback})
         message.append({"role": "assistant", "content": convo.response})
-    message.append({"role": "user", "content": f"{user_question}, {feedback_prompt} Answer: {data}"})
+
+        
+    message.append({"role": "user", "content": f"{user_question}, Answer: {data}"})
     print(message)
     response = client.chat.completions.create(
         model='gpt-4o',  
@@ -407,19 +455,19 @@ def format_response_with_gpt(user_question, data, previous_conversations, feedba
 
 
 
-def ask_helper(user_question, chat_id, feedback_comment):
-    with current_app.test_client() as client:
-        data = {
-            "question": user_question,
-            "chat_id": chat_id,
-            "feedback_comment": feedback_comment
-        }
-        response = client.post('/chat/ask', json=data)
-        if response.status_code == 201:
-            return response.get_json().get('response')
-        else:
-            print(f"Error in ask_helper: {response.get_json()}")
-            return None
+# def ask_helper(user_question, chat_id, feedback_comment):
+#     with current_app.test_client() as client:
+#         data = {
+#             "question": user_question,
+#             "chat_id": chat_id,
+#             "feedback_comment": feedback_comment
+#         }
+#         response = client.post('/chat/ask', json=data)
+#         if response.status_code == 201:
+#             return response.get_json().get('response')
+#         else:
+#             print(f"Error in ask_helper: {response.get_json()}")
+#             return None
 
 
 
