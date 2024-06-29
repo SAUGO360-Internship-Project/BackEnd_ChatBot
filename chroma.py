@@ -13,5 +13,9 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
                 model_name="text-embedding-3-large"
             )
 #collection= client.create_collection(name=collection_name,embedding_function=openai_ef)
-print(client.get_collection(name=collection_name,embedding_function=openai_ef))
-
+# print(client.get_collection(name=collection_name,embedding_function=openai_ef))
+# Initialize user-specific ChromaDB collection
+collection_name_user = "few_shot_users"
+collection_user = client.get_collection(name=collection_name_user, embedding_function=openai_ef)
+# print(client.get_collection(name=collection_name,embedding_function=openai_ef))
+print(collection_user.get())
