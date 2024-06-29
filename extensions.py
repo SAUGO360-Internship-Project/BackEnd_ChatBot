@@ -23,6 +23,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 # Get or create the collection
 collection_name = "few_shot"
 collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
+collection_user =client_chroma.get_collection(name="few_shot_users",embedding_function=openai_ef)
 
 
 SECRET_KEY= os.getenv('SECRET_KEY')
@@ -161,21 +162,73 @@ def get_embeddings(text):
     return response.data[0].embedding 
 
 
-def select_relevant_few_shots(user_question, top_n=5):
+# def select_relevant_few_shots(user_question, top_n=5, distance_threshold=1.5):
+#     user_embedding = get_embeddings(user_question)
+#     relevant_examples = []
+
+#     results = collection.query(
+#         query_embeddings=[user_embedding],
+#         n_results=top_n,
+#         include=['distances', 'metadatas']
+#     )
+
+#     for distances, metadata_list in zip(results['distances'], results['metadatas']):
+#         for distance, metadata in zip(distances, metadata_list):
+#             print(distance)
+#             if distance < distance_threshold:
+#                 relevant_examples.append({
+#                     "question": metadata.get('question'),
+#                     "sql_query": metadata.get('sql_query')
+#                 })
+
+#     return relevant_examples
+
+def select_relevant_few_shots(user_question, top_n_main=5, top_n_user=2, distance_threshold=1.5):
     user_embedding = get_embeddings(user_question)
     relevant_examples = []
-    results = collection.query(
+
+    # Query main collection
+    results_main = collection.query(
         query_embeddings=[user_embedding],
-        n_results=top_n,
-        include=['metadatas']
-    )    
-    for metadata_list in results['metadatas']:  # Loop through each list of metadatas
-        for metadata in metadata_list:  # Loop through each metadata dictionary
-            relevant_examples.append({
-                "question": metadata.get('question'),
-                "sql_query": metadata.get('sql_query')
-            })
+        n_results=top_n_main,
+        include=['distances', 'metadatas']
+    )
+
+    # Filter by distance threshold and add to relevant examples
+    for distances, metadata_list in zip(results_main['distances'], results_main['metadatas']):
+        for distance, metadata in zip(distances, metadata_list):
+            print(distance)
+            if distance <= distance_threshold:
+                relevant_examples.append({
+                    "Question": metadata.get('Question'),
+                    "Score": metadata.get('Score'),
+                    "Executable": metadata.get('Executable'),
+                    "Answer": metadata.get('Answer'),
+                    "Location": metadata.get('Location')
+                })
+
+    # Query user-specific collection
+    results_user = collection_user.query(
+        query_embeddings=[user_embedding],
+        n_results=top_n_user,
+        include=['distances', 'metadatas']
+    )
+
+    # Filter by distance threshold and add to relevant examples
+    for distances, metadata_list in zip(results_user['distances'], results_user['metadatas']):
+        for distance, metadata in zip(distances, metadata_list):
+            print(distance)
+            if distance <= distance_threshold:
+                relevant_examples.append({
+                    "Question": metadata.get('Question'),
+                    "Score": metadata.get('Score'),
+                    "Executable": metadata.get('Executable'),
+                    "Answer": metadata.get('Answer'),
+                    "Location": metadata.get('Location')
+                })
+
     return relevant_examples
+
 
 # Function to detect sensitive info
 def contains_sensitive_info(question):
@@ -216,62 +269,62 @@ def get_google_maps_url(address):
 
 
 
-def classify_question(user_question):
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": 
-                '''
-                You will be given a question or a statement. 
-                If the sentence asks about a location or directions, simply reply with "location". If it doesn't, reply with "no".
-                '''
-            },
-            {
-                "role": "user",
-                "content": "Take me to Charlie's house"
-            },
-            {
-                "role": "assistant",
-                "content": "location"
-            },
-            {
-                "role": "user",
-                "content": "What is the weather today?"
-            },
-            {
-                "role": "assistant",
-                "content": "no"
-            },
-            {
-                "role": "user",
-                "content": "What is the address of Robert?"
-            },
-            {
-                "role": "assistant",
-                "content": "location"
-            },
-            {
-                "role": "user",
-                "content": "How much did James pay last year?"
-            },
-            {
-                "role": "assistant",
-                "content": "no"
-            },
-            {
-                "role": "user",
-                "content": "Residence of Jessica Garcia."
-            },
-            {
-                "role": "assistant",
-                "content": "location"
-            },
-            {
-                "role": "user",
-                "content": user_question
-            }
-        ]
-    )
-    return response.choices[0].message.content.strip()
+# def classify_question(user_question):
+#     response = client.chat.completions.create(
+#         model="gpt-4o",
+#         messages=[
+#             {
+#                 "role": "system",
+#                 "content": 
+#                 '''
+#                 You will be given a question or a statement. 
+#                 If the sentence asks about a location or directions, simply reply with "location". If it doesn't, reply with "no".
+#                 '''
+#             },
+#             {
+#                 "role": "user",
+#                 "content": "Take me to Charlie's house"
+#             },
+#             {
+#                 "role": "assistant",
+#                 "content": "location"
+#             },
+#             {
+#                 "role": "user",
+#                 "content": "What is the weather today?"
+#             },
+#             {
+#                 "role": "assistant",
+#                 "content": "no"
+#             },
+#             {
+#                 "role": "user",
+#                 "content": "What is the address of Robert?"
+#             },
+#             {
+#                 "role": "assistant",
+#                 "content": "location"
+#             },
+#             {
+#                 "role": "user",
+#                 "content": "How much did James pay last year?"
+#             },
+#             {
+#                 "role": "assistant",
+#                 "content": "no"
+#             },
+#             {
+#                 "role": "user",
+#                 "content": "Residence of Jessica Garcia."
+#             },
+#             {
+#                 "role": "assistant",
+#                 "content": "location"
+#             },
+#             {
+#                 "role": "user",
+#                 "content": user_question
+#             }
+#         ]
+#     )
+#     return response.choices[0].message.content.strip()
