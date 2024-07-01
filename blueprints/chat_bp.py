@@ -255,6 +255,27 @@ def submit_feedback():
     return jsonify({"message": "Feedback submitted successfully"}), 201
 
 
+@chat_bp.route('/feedback/<int:feedback_id>', methods=['PUT'])
+def update_feedback(feedback_id):
+    try:
+        data = request.json
+        feedback_comment = data.get('feedback_comment', '')
+
+        feedback = Feedback.query.get(feedback_id)
+        if not feedback:
+            return jsonify({"error": "Feedback not found"}), 404
+
+        # Check if the feedback is negative
+        if feedback.feedback_type != 'negative':
+            return jsonify({"error": "Cannot update feedback. Only negative feedback can be updated."}), 400
+
+        feedback.feedback_comment = feedback_comment
+        db.session.commit()
+
+        return jsonify({"message": "Feedback updated successfully"}), 200
+    except Exception as e:
+        print(f"Error updating feedback: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 
 #To get feedback about a convo
