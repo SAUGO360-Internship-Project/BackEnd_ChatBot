@@ -280,11 +280,27 @@ def update_feedback(conversation_id):
 
 
 
-#To get feedback about a convo
-@chat_bp.route('/feedback/<int:conversation_id>', methods=['GET'])
-def get_feedback_for_conversation(conversation_id):
-    feedbacks = Feedback.query.filter_by(conversation_id=conversation_id).all()
-    return jsonify(feedbacks_schema.dump(feedbacks)),200
+@chat_bp.route('/conversations/<int:conversation_id>/feedback', methods=['GET'])
+def get_feedback(conversation_id):
+    try:
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        # Query feedback based on conversation_id and user_id
+        feedback = Feedback.query.filter_by(conversation_id=conversation_id).all()
+
+        if not feedback:
+            return jsonify({'error': 'Feedback not found'}), 404
+
+        # Serialize feedback using your schema
+        serialized_feedback = feedbacks_schema.dump(feedback)
+
+        return jsonify(serialized_feedback), 200
+
+    except Exception as e:
+        print(f"Error retrieving feedback: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 
 #Main asking route

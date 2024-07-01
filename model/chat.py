@@ -31,6 +31,7 @@ class Conversation(db.Model):
     executable = db.Column(db.String(3), nullable=True)  # Executable field
     location = db.Column(db.String(3), nullable=True)  # Location field
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    feedbacks= db.relationship('Feedback', backref= 'conversation', lazy=True, cascade='all, delete-orphan')
 
     def __init__(self, chat_id, user_query, response, sql_query, score=None, executable=None, location=None):
         self.chat_id = chat_id
