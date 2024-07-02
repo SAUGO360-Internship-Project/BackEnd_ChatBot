@@ -25,7 +25,6 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 # Get or create the collection
 collection_name = "few_shot"
 collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
-collection_user =client_chroma.get_collection(name="few_shot_users",embedding_function=openai_ef)
 
 with open('db_schema_prompt.txt', 'r') as file:
     db_schema_prompt = file.read()
@@ -225,11 +224,15 @@ def submit_feedback():
     db.session.commit()
 
     if feedback_type == 'positive':
+        user_id = conversation.chat.user_id  # Assuming you have a relationship to get the user_id
+        user_collection_name = f"few_shot_user_{user_id}"
+        user_collection = client_chroma.get_or_create_collection(name=user_collection_name, embedding_function=openai_ef)
+
         # Extract the fields from the conversation
         question = conversation.user_query
         score = conversation.score
         executable = conversation.executable
-        answer = conversation.sql_query  # Ensure this is the correct field you want to store as 'Answer'
+        answer = conversation.sql_query
         location = conversation.location
 
         # Ensure all fields are available
@@ -240,8 +243,8 @@ def submit_feedback():
             unique_id = hashlib.md5(question.encode()).hexdigest()
 
             # Store in the user-specific collection
-            collection_user.add(
-                ids=[unique_id],  # Use the unique ID as the identifier
+            user_collection.add(
+                ids=[unique_id],
                 embeddings=[embedding],
                 metadatas=[{
                     "Question": question,
@@ -254,7 +257,7 @@ def submit_feedback():
 
     return jsonify({"message": "Feedback submitted successfully"}), 201
 
-
+#Edit feedback
 @chat_bp.route('/conversations/<int:conversation_id>/feedback', methods=['PUT'])
 def update_feedback(conversation_id):
     try:
@@ -279,7 +282,7 @@ def update_feedback(conversation_id):
         return jsonify({"error": "Internal Server Error"}), 500
 
 
-
+#Get a certain feedback
 @chat_bp.route('/conversations/<int:conversation_id>/feedback', methods=['GET'])
 def get_feedback(conversation_id):
     try:
@@ -301,6 +304,31 @@ def get_feedback(conversation_id):
     except Exception as e:
         print(f"Error retrieving feedback: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
+
+#Get all feedbacks
+@chat_bp.route('/feedback', methods=['GET'])
+def get_all_feedback():
+    try:
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"error": "Authentication token is required"}), 401
+        
+        # Query all feedback entries in the database
+        feedbacks = Feedback.query.all()
+
+        if not feedbacks:
+            return jsonify({'error': 'No feedback found'}), 404
+
+        # Serialize the list of feedback entries using your schema
+        serialized_feedbacks = feedbacks_schema.dump(feedbacks)
+
+        return jsonify(serialized_feedbacks), 200
+
+    except Exception as e:
+        print(f"Error retrieving feedback: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
+    
+
 
 
 #Main asking route
@@ -328,15 +356,16 @@ def ask():
                 The user will be asking questions about a database with the schema described above. 
                 The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
                 Guidelines:
-                1) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
-                2) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
-                3) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
+                1) Field Type: If the type of the field, which is given at the end of each field, is "string"; then, your answer for that field must be between double quotations.
+                2) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
+                3) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
+                4) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
                 Your primary objective is to read each question and return 4 fields as JSON string as follows:
                 {
-                    "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Answer with only an integer number.
-                    "Executable": "Yes" or "No" between double quotations based on the guidelines listed above. An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field.                    
-                    "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL.
-                    "Location": Does the user sentence or question ask about a location or directions? Answer with "Yes" or "No" between double quotations.
+                    "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Type: integer. Options: 1-10.
+                    "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
+                    "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Type: string.
+                    "Location": Does the user sentence or question ask about a location or directions? Type: string. Options: "Yes" or "No". 
                 }
                 Important Notes:
                 1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message where he means that he wants the second option. 
@@ -365,13 +394,20 @@ def ask():
 
     # Add the current user question
     conversation_history.append({"role": "user", "content": user_question})
-
+    # Get user_id from the chat
+    chat = Chat.query.get(chat_id)
+    if not chat:
+        return jsonify({"error": "Chat not found"}), 404
+    user_id = chat.user_id
     # Generate SQL query and extract relevant fields
-    sql_query, score, executable, location = generate_sql_query(user_question, conversation_history)
+    sql_query, score, executable, location = generate_sql_query(user_question, conversation_history,user_id)
 
+    if score < 4:
+        return jsonify({"response": "I'm here to answer questions related to the database. Could you please ask something relevant?"}), 403
     if executable == "No":
         return jsonify({"response": "This question asks for sensitive content and I am not allowed to answer it."}), 403
 
+    
     # Check for data-altering operations
     if contains_data_altering_operations(sql_query):
         return jsonify({"response": "Data-altering operations are not allowed."}), 403
@@ -382,11 +418,11 @@ def ask():
         result = session.execute(text(sql_query)).fetchall()
 
         print(f"SQL Query Result: {result}")
-        if location == "Yes":
+        RESULT_THRESHOLD=30
+        if len(result) > RESULT_THRESHOLD:
+            formatted_response = format_as_table(result)
+        elif location == "Yes":
             if len(result) > 1:
-                # addresses = [", ".join(map(str, row)) for row in result]
-                # address_list = "\n".join([f"{i+1}. {address}" for i, address in enumerate(addresses)])
-                # formatted_response = f"Multiple results found. Please specify which address you are referring to:\n{address_list}"
                 formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
             else:
                 address = format_address(result)
@@ -419,11 +455,11 @@ def ask():
 
 
 
-def generate_sql_query(user_question, conversation_history):
-    relevant_examples = select_relevant_few_shots(user_question, top_n_main=5,top_n_user=2,distance_threshold=1.5)
+def generate_sql_query(user_question, conversation_history,user_id):
+    relevant_examples = select_relevant_few_shots(user_question,user_id=user_id, top_n_main=5,top_n_user=2,distance_threshold=1.5)
 
     example_texts = "\n".join(
-    [f"User Question: \"{ex['Question']}\"\n \"Score: {ex['Score']}\nExecutable: {ex['Executable']}\nAnswer: {ex['Answer']}\nLocation: {ex['Location']}\"" for ex in relevant_examples]
+    [f"User Question: \"{ex['Question']}\"\n \"Score\": {ex['Score']}\n\"Executable\": \"{ex['Executable']}\"\n\"Answer\": \"{ex['Answer']}\"\n\"Location\": \"{ex['Location']}\"" for ex in relevant_examples]
     )
 
     # Append examples and instructions to the system message
@@ -433,7 +469,7 @@ def generate_sql_query(user_question, conversation_history):
     response = client.chat.completions.create(
         model='gpt-4o',
         messages=conversation_history,
-        max_tokens=150
+        max_tokens=700
     )
     gpt_response = response.choices[0].message.content.strip()
     print(gpt_response)
@@ -466,11 +502,11 @@ def format_response_with_gpt(user_question, data, previous_conversations):
                 Your goal is to format the final answer given by the user in a user-friendly way and a full brief sentence taking into consideration his feedback if he has any.
                 If multiple answers are given then you must format them in the following manner:
                 *Brief introductory sentence*:
-                *Numbered List*
+                *Numbered List with each element on a new line*
                 1) ...
                 2) ...
                 3) ...
-                *Question asking the user to choose*   
+                *Appropriate question asking the user to choose*   
                 '''
               }]
     for convo in previous_conversations:
@@ -487,26 +523,16 @@ def format_response_with_gpt(user_question, data, previous_conversations):
     response = client.chat.completions.create(
         model='gpt-4o',  
         messages=message,
-        max_tokens=150
+        max_tokens=500
     )
     
     return response.choices[0].message.content.strip()
 
 
 
-# def ask_helper(user_question, chat_id, feedback_comment):
-#     with current_app.test_client() as client:
-#         data = {
-#             "question": user_question,
-#             "chat_id": chat_id,
-#             "feedback_comment": feedback_comment
-#         }
-#         response = client.post('/chat/ask', json=data)
-#         if response.status_code == 201:
-#             return response.get_json().get('response')
-#         else:
-#             print(f"Error in ask_helper: {response.get_json()}")
-#             return None
 
-
-
+def format_as_table(results):
+    rows = []
+    for row in results:
+        rows.append("| " + " | ".join(str(value) for value in row) + " |")
+    return "\n".join(rows)
