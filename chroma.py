@@ -16,6 +16,6 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 # print(client.get_collection(name=collection_name,embedding_function=openai_ef))
 # Initialize user-specific ChromaDB collection
 collection_name_user = "few_shot_users"
-collection_user = client.get_collection(name=collection_name_user, embedding_function=openai_ef)
+collection_user = client.delete_collection(name=collection_name_user)
 # print(client.get_collection(name=collection_name,embedding_function=openai_ef))
 print(collection_user.get())
