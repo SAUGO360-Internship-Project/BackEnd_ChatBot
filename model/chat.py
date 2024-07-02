@@ -25,7 +25,7 @@ class Conversation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     chat_id = db.Column(db.Integer, db.ForeignKey('chat.id'), nullable=False)
     user_query = db.Column(db.String(500), nullable=False)
-    response = db.Column(db.String(2000), nullable=False)
+    response = db.Column(db.Text, nullable=False)
     sql_query = db.Column(db.Text, nullable=False)
     score = db.Column(db.Integer, nullable=True)  # Score field
     executable = db.Column(db.String(3), nullable=True)  # Executable field
