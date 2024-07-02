@@ -38,16 +38,16 @@ def create_chat():
         
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         try:
             user_id = decode_token(token)
         except Exception as e:
             print(f"Error decoding token: {e}")
-            return jsonify({"error": "Invalid token"}), 401
+            return jsonify({"message": "Invalid token"}), 401
 
         if not title or not user_id:
-            return jsonify({"error": "Title and user_id are required"}), 400
+            return jsonify({"message": "Title and user_id are required"}), 400
 
         new_chat = Chat(title=title, user_id=user_id)
         db.session.add(new_chat)
@@ -56,7 +56,7 @@ def create_chat():
     
     except Exception as e:
         print(f"Error creating chat: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
 
 
 
@@ -68,19 +68,19 @@ def delete_chat(chat_id):
         
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         try:
             user_id = decode_token(token)
         except Exception as e:
             print(f"Error decoding token: {e}")
-            return jsonify({"error": "Invalid token"}), 401
+            return jsonify({"message": "Invalid token"}), 401
 
         if not chat:
-            return jsonify({"error": "Chat not found"}), 404
+            return jsonify({"message": "Chat not found"}), 404
 
         if chat.user_id != user_id:
-            return jsonify({"error": "Unauthorized"}), 403
+            return jsonify({"message": "Unauthorized"}), 403
 
         db.session.delete(chat)
         db.session.commit()
@@ -88,7 +88,7 @@ def delete_chat(chat_id):
         return jsonify({"message": "Chat deleted successfully"}), 200
     except Exception as e:
         print(f"Error deleting chat: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
 
 # Edit chat title
 @chat_bp.route('/chats/<int:chat_id>', methods=['PUT'])
@@ -99,23 +99,23 @@ def update_chat_title(chat_id):
         
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         try:
             user_id = decode_token(token)
         except Exception as e:
             print(f"Error decoding token: {e}")
-            return jsonify({"error": "Invalid token"}), 401
+            return jsonify({"message": "Invalid token"}), 401
 
         if not new_title:
-            return jsonify({"error": "Title is required"}), 400
+            return jsonify({"message": "Title is required"}), 400
 
         chat = Chat.query.get(chat_id)
         if not chat:
-            return jsonify({"error": "Chat not found"}), 404
+            return jsonify({"message": "Chat not found"}), 404
 
         if chat.user_id != user_id:
-            return jsonify({"error": "Unauthorized"}), 403
+            return jsonify({"message": "Unauthorized"}), 403
 
         chat.title = new_title
         db.session.commit()
@@ -123,7 +123,7 @@ def update_chat_title(chat_id):
         return jsonify({"message": "Chat title updated successfully", "chat": chat_schema.dump(chat)}), 200
     except Exception as e:
         print(f"Error updating chat title: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
 
 
 # Endpoint to get all conversations for a chat
@@ -132,27 +132,27 @@ def get_conversations(chat_id):
     try:
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         try:
             user_id = decode_token(token)
         except Exception as e:
             print(f"Error decoding token: {e}")
-            return jsonify({"error": "Invalid token"}), 401
+            return jsonify({"message": "Invalid token"}), 401
 
         chat = Chat.query.get(chat_id)
         
         if not chat:
-            return jsonify({"error": "Chat not found"}), 404
+            return jsonify({"message": "Chat not found"}), 404
 
         if chat.user_id != user_id:
-            return jsonify({"error": "Unauthorized"}), 403
+            return jsonify({"message": "Unauthorized"}), 403
 
         conversations = Conversation.query.filter_by(chat_id=chat_id).all()
         return jsonify(conversations_schema.dump(conversations)), 200
     except Exception as e:
         print(f"Error retrieving conversations: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
     
 # Get a certain conversation
 @chat_bp.route('/conversations/<int:conversation_id>', methods=['GET'])
@@ -161,20 +161,20 @@ def get_conversation(conversation_id):
     
     token = extract_auth_token(request)
     if not token:
-        return jsonify({"error": "Authentication token is required"}), 401
+        return jsonify({"message": "Authentication token is required"}), 401
     
     try:
         user_id = decode_token(token)
     except Exception as e:
         print(f"Error decoding token: {e}")
-        return jsonify({"error": "Invalid token"}), 401
+        return jsonify({"message": "Invalid token"}), 401
 
     if not conversation:
-        return jsonify({"error": "Conversation not found"}), 404
+        return jsonify({"message": "Conversation not found"}), 404
 
     chat = Chat.query.get(conversation.chat_id)
     if chat.user_id != user_id:
-        return jsonify({"error": "Unauthorized"}), 403
+        return jsonify({"message": "Unauthorized"}), 403
 
     return jsonify(conversation_schema.dump(conversation)), 200
 
@@ -184,19 +184,19 @@ def get_all_chats():
     try:
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         try:
             user_id = decode_token(token)
         except Exception as e:
             print(f"Error decoding token: {e}")
-            return jsonify({"error": "Invalid token"}), 401
+            return jsonify({"message": "Invalid token"}), 401
 
         chats = Chat.query.filter_by(user_id=user_id).all()
         return chats_schema.jsonify(chats), 200
     except Exception as e:
         print(f"Error retrieving chats: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
 
 
 
@@ -208,11 +208,11 @@ def submit_feedback():
     feedback_comment = data.get('feedback_comment', '')
 
     if not conversation_id or not feedback_type:
-        return jsonify({"error": "conversation_id and feedback_type are required"}), 400
+        return jsonify({"message": "conversation_id and feedback_type are required"}), 400
 
     conversation = Conversation.query.get(conversation_id)
     if not conversation:
-        return jsonify({"error": "Conversation not found"}), 404
+        return jsonify({"message": "Conversation not found"}), 404
 
     feedback = Feedback(
         conversation_id=conversation_id,
@@ -267,11 +267,11 @@ def update_feedback(conversation_id):
         # Fetch the feedback associated with the conversation ID
         feedback = Feedback.query.filter_by(conversation_id=conversation_id).first()
         if not feedback:
-            return jsonify({"error": "Feedback not found"}), 404
+            return jsonify({"message": "Feedback not found"}), 404
 
         # Check if the feedback is negative
         if feedback.feedback_type != 'negative':
-            return jsonify({"error": "Cannot update feedback. Only negative feedback can be updated."}), 400
+            return jsonify({"message": "Cannot update feedback. Only negative feedback can be updated."}), 400
 
         feedback.feedback_comment = feedback_comment
         db.session.commit()
@@ -279,7 +279,7 @@ def update_feedback(conversation_id):
         return jsonify({"message": "Feedback updated successfully"}), 200
     except Exception as e:
         print(f"Error updating feedback: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
 
 
 #Get a certain feedback
@@ -288,13 +288,13 @@ def get_feedback(conversation_id):
     try:
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         # Query feedback based on conversation_id and user_id
         feedback = Feedback.query.filter_by(conversation_id=conversation_id).all()
 
         if not feedback:
-            return jsonify({'error': 'Feedback not found'}), 404
+            return jsonify({'message': 'Feedback not found'}), 404
 
         # Serialize feedback using your schema
         serialized_feedback = feedbacks_schema.dump(feedback)
@@ -303,7 +303,7 @@ def get_feedback(conversation_id):
 
     except Exception as e:
         print(f"Error retrieving feedback: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
 
 #Get all feedbacks
 @chat_bp.route('/feedback', methods=['GET'])
@@ -311,13 +311,13 @@ def get_all_feedback():
     try:
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"error": "Authentication token is required"}), 401
+            return jsonify({"message": "Authentication token is required"}), 401
         
         # Query all feedback entries in the database
         feedbacks = Feedback.query.all()
 
         if not feedbacks:
-            return jsonify({'error': 'No feedback found'}), 404
+            return jsonify({'message': 'No feedback found'}), 404
 
         # Serialize the list of feedback entries using your schema
         serialized_feedbacks = feedbacks_schema.dump(feedbacks)
@@ -326,7 +326,7 @@ def get_all_feedback():
 
     except Exception as e:
         print(f"Error retrieving feedback: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        return jsonify({"message": "Internal Server Error"}), 500
     
 
 
@@ -339,11 +339,11 @@ def ask():
     chat_id = data.get('chat_id')
 
     if not user_question or not chat_id:
-        return jsonify({"error": "Question and chat_id are required"}), 400
+        return jsonify({"message": "Question and chat_id are required"}), 400
 
     # Check for sensitive information
     if contains_sensitive_info(user_question):
-        return jsonify({"response": "This question asks for sensitive content and I am not allowed to answer it."}), 403
+        return jsonify({"message": "This question asks for sensitive content and I am not allowed to answer it."}), 403
 
     # Fetch previous conversations for context
     previous_conversations = Conversation.query.filter_by(chat_id=chat_id).order_by(Conversation.timestamp).all()
@@ -397,20 +397,20 @@ def ask():
     # Get user_id from the chat
     chat = Chat.query.get(chat_id)
     if not chat:
-        return jsonify({"error": "Chat not found"}), 404
+        return jsonify({"message": "Chat not found"}), 404
     user_id = chat.user_id
     # Generate SQL query and extract relevant fields
     sql_query, score, executable, location = generate_sql_query(user_question, conversation_history,user_id)
 
     if score < 4:
-        return jsonify({"response": "I'm here to answer questions related to the database. Could you please ask something relevant?"}), 403
+        return jsonify({"message": "I'm here to answer questions related to the database. Could you please ask something relevant?"}), 403
     if executable == "No":
-        return jsonify({"response": "This question asks for sensitive content and I am not allowed to answer it."}), 403
+        return jsonify({"message": "This question asks for sensitive content and I am not allowed to answer it."}), 403
 
     
     # Check for data-altering operations
     if contains_data_altering_operations(sql_query):
-        return jsonify({"response": "Data-altering operations are not allowed."}), 403
+        return jsonify({"message": "Data-altering operations are not allowed."}), 403
 
     try:
         engine = db.get_engine(current_app, bind='TestingData')
@@ -445,10 +445,10 @@ def ask():
         db.session.add(conversation)
         db.session.commit()
 
-        return jsonify({"response": formatted_response}), 201
+        return jsonify({"message": formatted_response}), 201
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"message": str(e)}), 500
     finally:
         session.close()
 
