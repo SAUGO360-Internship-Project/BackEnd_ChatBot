@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,create_token,extract_auth_token,decode_token
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -29,6 +29,8 @@ collection = client_chroma.get_collection(name=collection_name,embedding_functio
 with open('db_schema_prompt.txt', 'r') as file:
     db_schema_prompt = file.read()
 
+with open('chart_code.txt', 'r') as file:
+    base_code = file.read()
 # Create a chat
 @chat_bp.route('/chats', methods=['POST'])
 def create_chat():
@@ -234,9 +236,12 @@ def submit_feedback():
         executable = conversation.executable
         answer = conversation.sql_query
         location = conversation.location
+        chartname= conversation.chartname
+        labelx=conversation.labelx
+        labely=conversation.labely
 
         # Ensure all fields are available
-        if question and answer and score is not None and executable and location:
+        if question and answer and score is not None and executable and location and chartname and labelx and labely:
             embedding = get_embeddings(question)
             
             # Generate a unique ID for the question
@@ -251,7 +256,10 @@ def submit_feedback():
                     "Score": score,
                     "Executable": executable,
                     "Answer": answer,
-                    "Location": location
+                    "Location": location,
+                    "ChartName": chartname,
+                    "LabelX": labelx,
+                    "LabelY":labely
                 }]
             )
 
@@ -365,7 +373,10 @@ def ask():
                     "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Type: integer. Options: 1-10.
                     "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
                     "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Type: string.
-                    "Location": Does the user sentence or question ask about a location or directions? Type: string. Options: "Yes" or "No". 
+                    "Location": Does the user sentence or question ask for directions? Type: string. Options: "Yes" or "No". 
+                    "ChartName": The type of visualization or map to be generated if any. The user will be explicitly asking for the generation of a specific type of chart ("LineChart","BarChart","PieChart"). Or he will ask for directions to a certain location ("GoogleMaps"). Options: "LineChart","BarChart","PieChart","GoogleMaps","None". Type: string.
+                    "LabelX": The label or key in the database that represents the x-axis values for the chart. This field is required when generating visualizations like "Line Chart", "Bar Chart", or "Pie Chart". It specifies what data will be plotted along the x-axis. If "ChartName" is "None", then this field will be "None" as well. Type: string.
+                    "LabelY": The label or key in the dataset that represents the y-axis values for the chart. This field is required when generating visualizations like "Line Chart", "Bar Chart", or "Pie Chart". It specifies what data will be plotted along the y-axis. If "ChartName" is "None", then this field will be "None" as well. Type: string.
                 }
                 Important Notes:
                 1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message where he means that he wants the second option. 
@@ -387,10 +398,12 @@ def ask():
                 "Score": convo.score,
                 "Executable": convo.executable,
                 "Answer": convo.sql_query,
-                "Location": convo.location
+                "Location": convo.location,
+                "ChartName": convo.chartname,
+                "LabelX": convo.labelx,
+                "LabelY": convo.labely
             })
         })
-
 
     # Add the current user question
     conversation_history.append({"role": "user", "content": user_question})
@@ -400,7 +413,7 @@ def ask():
         return jsonify({"message": "Chat not found"}), 404
     user_id = chat.user_id
     # Generate SQL query and extract relevant fields
-    sql_query, score, executable, location = generate_sql_query(user_question, conversation_history,user_id)
+    sql_query, score, executable, location, chartname, labelx, labely = generate_sql_query(user_question, conversation_history, user_id)
 
     if score < 4:
         return jsonify({"message": "I'm here to answer questions related to the database. Could you please ask something relevant?"}), 403
@@ -416,7 +429,7 @@ def ask():
         engine = db.get_engine(current_app, bind='TestingData')
         session = engine.connect()
         result = session.execute(text(sql_query)).fetchall()
-
+        
         print(f"SQL Query Result: {result}")
         RESULT_THRESHOLD=30
         if len(result) > RESULT_THRESHOLD:
@@ -428,11 +441,15 @@ def ask():
                 address = format_address(result)
                 map_url = get_google_maps_url(address)
                 formatted_response = f"Here is the map to {address}: {map_url}"
+        elif chartname in ["LineChart", "BarChart", "PieChart"]:
+            result_adjusted = [{"labelX": str(row[0]), "labelY": row[1]} for row in result]
+            chart_code = generate_chart_code(result_adjusted, labelx, labely, chartname, base_code)
+            formatted_response = f"Here is your {chartname}:\n{chart_code}"
         else:
             # Format the result with GPT-4
             formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
 
-        # Store the conversation
+       # Store the conversation
         conversation = Conversation(
             chat_id=chat_id,
             user_query=user_question,
@@ -440,7 +457,10 @@ def ask():
             sql_query=sql_query,
             score=score,
             executable=executable,
-            location=location
+            location=location,
+            chartname=chartname,
+            labelx=labelx,
+            labely=labely
         )
         db.session.add(conversation)
         db.session.commit()
@@ -480,18 +500,26 @@ def generate_sql_query(user_question, conversation_history,user_id):
         executable = response_json["Executable"]
         sql_query = response_json["Answer"]
         location = response_json["Location"]
+        chartname = response_json["ChartName"]
+        labelx = response_json["LabelX"]
+        labely = response_json["LabelY"]
     except json.JSONDecodeError:
         score = None
         executable = "No"
         sql_query = "NULL"
         location = "No"
+        chartname = "None"
+        labelx = "None"
+        labely = "None"
+
 
     # Replace MONTH and YEAR functions with EXTRACT for PostgreSQL compatibility
     if sql_query != "NULL":
         sql_query = sql_query.replace("MONTH(", "EXTRACT(MONTH FROM ")
         sql_query = sql_query.replace("YEAR(", "EXTRACT(YEAR FROM ")
 
-    return sql_query, score, executable, location
+    return sql_query, score, executable, location, chartname, labelx, labely
+
 
 
 
@@ -529,10 +557,3 @@ def format_response_with_gpt(user_question, data, previous_conversations):
     return response.choices[0].message.content.strip()
 
 
-
-
-def format_as_table(results):
-    rows = []
-    for row in results:
-        rows.append("| " + " | ".join(str(value) for value in row) + " |")
-    return "\n".join(rows)

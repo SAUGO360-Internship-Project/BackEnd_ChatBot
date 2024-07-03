@@ -1,0 +1,51 @@
+import React, { useState, useEffect } from "react";
+import { Pie,Line,Bar } from "react-chartjs-2";
+import { Chart as ChartJS } from "chart.js/auto";
+
+const data = {data};
+
+const labelX = "{xlabel}";
+const labelY = "{ylabel}";
+
+function {chartName}({ chartData }) {
+  return <{ChartName} data={chartData} />;
+}
+
+function ChartTest() {
+  const [userData, setUserData] = useState([]);
+  const [labelX, setLabelX] = useState('');
+  const [labelY, setLabelY] = useState('');
+
+  useEffect(() => {
+    setUserData(data);
+    setLabelX(labelX);
+    setLabelY(labelY);
+  }, []);
+
+  const chartData = {
+    labels: userData.map((item) => item[labelX]),
+    datasets: [
+      {
+        label: labelY,
+        data: userData.map((item) => item[labelY]),
+        backgroundColor: [
+          "rgba(75,192,192,1)",
+          "#ecf0f1",
+          "#50AF95",
+          "#f3ba2f",
+          "#2a71d0",
+        ],
+        borderColor: "black",
+        borderWidth: 2,
+      },
+    ],
+  };
+
+  return (
+    <div>
+      <{chartName} chartData={chartData} />
+    </div>
+  );
+}
+
+export default ChartTest;
