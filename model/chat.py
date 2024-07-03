@@ -30,10 +30,13 @@ class Conversation(db.Model):
     score = db.Column(db.Integer, nullable=True)  # Score field
     executable = db.Column(db.String(3), nullable=True)  # Executable field
     location = db.Column(db.String(3), nullable=True)  # Location field
+    chartname= db.Column(db.String(100),nullable=True)
+    labelx= db.Column(db.String(100),nullable=True)
+    labely= db.Column(db.String(100),nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     feedbacks= db.relationship('Feedback', backref= 'conversation', lazy=True, cascade='all, delete-orphan')
 
-    def __init__(self, chat_id, user_query, response, sql_query, score=None, executable=None, location=None):
+    def __init__(self, chat_id, user_query, response, sql_query, score=None, executable=None, location=None,chartname=None,labelx=None,labely=None):
         self.chat_id = chat_id
         self.user_query = user_query
         self.response = response
@@ -41,13 +44,16 @@ class Conversation(db.Model):
         self.score = score
         self.executable = executable
         self.location = location
+        self.chartname =chartname
+        self.labelx=labelx
+        self.labely=labely
 
 
 
 class ConversationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Conversation
-        fields = ("id", "chat_id", "user_query", "response", "sql_query","score","executable","location", "timestamp")
+        fields = ("id", "chat_id", "user_query", "response", "sql_query","score","executable","location","chartname","labelx","labely", "timestamp")
 
 
 class Chat(db.Model):
