@@ -252,17 +252,16 @@ def format_as_table(results):
         rows.append("| " + " | ".join(str(value) for value in row) + " |")
     return "\n".join(rows)
 
-
 def generate_chart_code(data, xlabel, ylabel, chart_name, base_code):
     chart_data = json.dumps(data, indent=2)
-    chart_component_name = chart_name.replace(" ", "").rstrip("Chart")
-    print(chart_component_name)
-    return base_code\
-        .replace("{ChartName}", chart_component_name)\
-        .replace("{chartName}", chart_name)\
-        .replace("{data}", chart_data)\
-        .replace("{xlabel}", xlabel)\
-        .replace("{ylabel}", ylabel)
+    chart_component_name = chart_name
+    chart_component = chart_name[:-5]
 
+    return base_code\
+        .replace("{chartName}", chart_component_name)\
+        .replace("{chartComponent}", chart_component)\
+        .replace("{data}", chart_data)\
+        .replace("{labelX}", xlabel)\
+        .replace("{labelY}", ylabel)
 
 
