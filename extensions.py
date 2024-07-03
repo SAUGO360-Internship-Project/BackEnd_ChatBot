@@ -11,6 +11,7 @@ import chromadb
 import chromadb.utils.embedding_functions as embedding_functions
 from chromadb.config import Settings
 import googlemaps
+import json
 
 
 # Initialize ChromaDB client with a persistent local path
