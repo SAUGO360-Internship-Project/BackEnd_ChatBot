@@ -181,7 +181,8 @@ def select_relevant_few_shots(user_question, user_id, top_n_main=5, top_n_user=2
                     "Score": metadata.get('Score'),
                     "Executable": metadata.get('Executable'),
                     "Answer": metadata.get('Answer'),
-                    "Location": metadata.get('Location')
+                    "Location": metadata.get('Location'),
+                    "ChartName": metadata.get('ChartName')
                 })
 
     # Query user-specific collection
@@ -202,7 +203,8 @@ def select_relevant_few_shots(user_question, user_id, top_n_main=5, top_n_user=2
                     "Score": metadata.get('Score'),
                     "Executable": metadata.get('Executable'),
                     "Answer": metadata.get('Answer'),
-                    "Location": metadata.get('Location')
+                    "Location": metadata.get('Location'),
+                    "ChartName": metadata.get('ChartName')
                 })
 
     return relevant_examples

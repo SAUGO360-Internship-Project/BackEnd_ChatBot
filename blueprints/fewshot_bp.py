@@ -28,10 +28,9 @@ def add_few_shot():
     answer = data.get('Answer')
     location = data.get('Location')
     chartname=data.get('ChartName')
-    labelx=data.get('LabelX'),
-    labely=data.get('LabelY')
 
-    if not question or not answer or not score or not executable or not location or not chartname or not labelx or not labely:
+
+    if not question or not answer or not score or not executable or not location or not chartname:
         return jsonify({"error": "All fields are required"}), 400
 
     embedding = get_embeddings(question)
@@ -48,9 +47,7 @@ def add_few_shot():
             "Executable": executable,
             "Answer": answer,
             "Location": location,
-            "ChartName": chartname,
-            "LabelX": labelx,
-            "LabelY":labely
+            "ChartName": chartname
         }]
     )
     return jsonify({"message": "Few-shot example added successfully.", "id": unique_id}), 201
@@ -72,9 +69,7 @@ def get_few_shots():
             "Executable": result['metadatas'][x]['Executable'],
             "Answer": result['metadatas'][x]['Answer'],
             "Location": result['metadatas'][x]['Location'],
-            "ChartName": result['metadatas'][x]['ChartName'],
-            "LabelX": result['metadatas'][x]['LabelX'],
-            "LabelY": result['metadatas'][x]['LabelY']
+            "ChartName": result['metadatas'][x]['ChartName']
 
         })
     return jsonify(few_shots), 200
