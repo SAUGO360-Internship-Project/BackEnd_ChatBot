@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_url,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -30,7 +30,11 @@ with open('db_schema_prompt.txt', 'r') as file:
     db_schema_prompt = file.read()
 
 with open('chart_code.txt', 'r') as file:
-    base_code = file.read()
+    chart_base_code = file.read()
+
+with open('map_code.txt', 'r') as file:
+    map_base_code = file.read()
+
 # Create a chat
 @chat_bp.route('/chats', methods=['POST'])
 def create_chat():
@@ -370,7 +374,7 @@ def ask():
                     "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
                     "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Type: string.
                     "Location": Does the user sentence or question ask for directions? Type: string. Options: "Yes" or "No". 
-                    "ChartName": The type of visualization or map to be generated if any. The user will be explicitly asking for the generation of a specific type of chart ("LineChart","BarChart","PieChart"). Or he will ask for directions to a certain location ("GoogleMaps"). Options: "LineChart","BarChart","PieChart","GoogleMaps","None". Type: string.
+                    "ChartName": The type of visualization or map to be generated if any. The user will be explicitly asking for the generation of a specific type of chart ("LineChart","BarChart","PieChart"). Or he will ask for directions to a certain location ("GoogleMaps"). If he doesn't ask for a chart or directions, reply with "None". Options: "LineChart","BarChart","PieChart","GoogleMaps","None". Type: string.
                 }
                 Important Notes:
                 1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message where he means that he wants the second option. 
@@ -424,23 +428,28 @@ def ask():
         result=data.fetchall()
 
         print(f"SQL Query Result: {result}")
-        RESULT_THRESHOLD=30
-        if len(result) > RESULT_THRESHOLD:
-            formatted_response = format_as_table(result)
+        if chartname in ["LineChart", "BarChart", "PieChart"]:
+            keys=data.keys()
+            keys=list(keys)
+            print(keys)
+            if len(keys)>2:
+                formatted_response = format_as_table(result,keys)
+            else:
+                result_adjusted = [{"labelX": str(row[0]), "labelY": row[1]} for row in result]
+                chart_code = generate_chart_code(result_adjusted, keys[0], keys[1], chartname, chart_base_code)
+                formatted_response = f"{chart_code}"
+        elif len(result) > 30:
+            keys=data.keys()
+            keys=list(keys)
+            formatted_response = format_as_table(result,keys)
         elif location == "Yes":
             if len(result) > 1:
                 formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
             else:
                 address = format_address(result)
-                map_url = get_google_maps_url(address)
-                formatted_response = f"Here is the map to {address}: {map_url}"
-        elif chartname in ["LineChart", "BarChart", "PieChart"]:
-            keys=data.keys()
-            keys=list(keys)
-            print(keys)
-            result_adjusted = [{"labelX": str(row[0]), "labelY": row[1]} for row in result]
-            chart_code = generate_chart_code(result_adjusted, keys[0], keys[1], chartname, base_code)
-            formatted_response = f"{chart_code}"
+                lat , lng = get_google_maps_loc(address)
+                map_code = generate_map_code(lat,lng,map_base_code)
+                formatted_response = f"Here is the map to {address}: {map_code}"
         else:
             # Format the result with GPT-4
             formatted_response = format_response_with_gpt(user_question, result, previous_conversations)

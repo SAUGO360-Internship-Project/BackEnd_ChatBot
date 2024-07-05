@@ -236,7 +236,7 @@ def format_address(result):
     return ", ".join(address_parts)
 
 # Helper function to get Google Maps URL
-def get_google_maps_url(address):
+def get_google_maps_loc(address):
     if not address:
         return None
     geocode_result = gmaps.geocode(address)
@@ -244,15 +244,32 @@ def get_google_maps_url(address):
         location = geocode_result[0]['geometry']['location']
         print(location)
         lat, lng = location['lat'], location['lng']
-        return f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
+        return lat, lng
     return None
 
 
-def format_as_table(results):
-    rows = []
+# def format_as_table(results):
+#     rows = []
+#     for row in results:
+#         rows.append("| " + " | ".join(str(value) for value in row) + " |")
+#     return "\n".join(rows)
+
+def format_as_table(results, keys):
+    table = '<table border="1">\n<tr>'
+    # Create table header
+    for key in keys:
+        table += f'<th>{key}</th>'
+    table += '</tr>\n'
+    # Create table rows
     for row in results:
-        rows.append("| " + " | ".join(str(value) for value in row) + " |")
-    return "\n".join(rows)
+        table += '<tr>'
+        for value in row:
+            table += f'<td>{value}</td>'
+        table += '</tr>\n'
+    table += '</table>'
+    return table
+
+
 
 def generate_chart_code(data, xlabel, ylabel, chart_name, base_code):
     chart_data = json.dumps(data, indent=2)
@@ -267,3 +284,7 @@ def generate_chart_code(data, xlabel, ylabel, chart_name, base_code):
         .replace("{labelY}", ylabel)
 
 
+def generate_map_code(lat, lng, base_code):
+    return base_code\
+        .replace("{lat}", str(lat))\
+        .replace("{lng}", str(lng))
