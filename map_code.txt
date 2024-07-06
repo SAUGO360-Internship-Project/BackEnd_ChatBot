@@ -1,17 +1,19 @@
-const MapDisplay = ({ lat, lng }) => {
+const MapDisplay = () => {
   const mapRef = useRef(null);
+  const lat = {lat}; 
+  const lng = {lng}; 
 
   useEffect(() => {
     const map = new window.google.maps.Map(mapRef.current, {
-      center: { {lat}, {lng} },
+      center: { lat: lat, lng: lng },
       zoom: 15,
     });
 
     new window.google.maps.Marker({
-      position: { {lat}, {lng} },
+      position: { lat: lat, lng: lng },
       map,
     });
-  }, [{lat}, {lng}]);
+  }, [lat, lng]);
 
   return <div ref={mapRef} style={{ height: '400px', width: '100%' }} />;
 };
