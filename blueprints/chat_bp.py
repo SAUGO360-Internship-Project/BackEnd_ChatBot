@@ -437,7 +437,7 @@ def ask():
             else:
                 result_adjusted = [{"labelX": str(row[0]), "labelY": row[1]} for row in result]
                 chart_code = generate_chart_code(result_adjusted, keys[0], keys[1], chartname, chart_base_code)
-                formatted_response = f"{chart_code}"
+                formatted_response = f"This is your {chartname}: {chart_code}"
         elif len(result) > 30:
             keys=data.keys()
             keys=list(keys)
