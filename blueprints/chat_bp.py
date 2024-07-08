@@ -366,7 +366,7 @@ def ask():
                 Guidelines:
                 1) Field Type: If the type of the field, which is given at the end of each field, is "string"; then, your answer for that field must be between double quotations.
                 2) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
-                3) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys.
+                3) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys. It is okay for the user to ask for directions to a certain location.
                 4) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
                 Your primary objective is to read each question and return 4 fields as JSON string as follows:
                 {
@@ -442,7 +442,7 @@ def ask():
             keys=data.keys()
             keys=list(keys)
             formatted_response = format_as_table(result,keys)
-        elif location == "Yes":
+        elif location == "Yes" and chartname =="GoogleMaps":
             if len(result) > 1:
                 if len(result)>30:
                     keys=data.keys()
