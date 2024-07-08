@@ -442,7 +442,7 @@ def ask():
             keys=data.keys()
             keys=list(keys)
             formatted_response = format_as_table(result,keys)
-        elif location == "Yes" and chartname == "GoogleMaps":
+        elif location == "Yes":
             if len(result) > 1:
                 if len(result)>30:
                     keys=data.keys()
