@@ -442,9 +442,14 @@ def ask():
             keys=data.keys()
             keys=list(keys)
             formatted_response = format_as_table(result,keys)
-        elif location == "Yes":
+        elif location == "Yes" and chartname == "GoogleMaps":
             if len(result) > 1:
-                formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+                if len(result)>30:
+                    keys=data.keys()
+                    keys=list(keys)
+                    formatted_response= format_as_table(result,keys)
+                else:
+                    formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
             else:
                 address = format_address(result)
                 lat , lng = get_google_maps_loc(address)
