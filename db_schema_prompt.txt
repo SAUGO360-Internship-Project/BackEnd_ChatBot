@@ -1,32 +1,51 @@
 The database schema is as follows:
 
-    Table customer_profile:
-    - customer_id (Integer, Primary Key)
-    - first_name (String)
-    - last_name (String)
-    - gender (String)
-    - date_of_birth (Date)
-    - email (String)
-    - phone_number (String)
-    - signup_date (Date)
-    - address (String)
-    - city (String)
-    - state (String)
-    - zip_code (String)
+Table consumers:
+    - Consumer_ID (String, Primary Key): Unique identifier for each consumer
+    - City (String): City where the consumer lives
+    - State (String): State where the consumer lives
+    - Country (String): Country where the consumer lives
+    - Latitude (Float): Latitude coordinate of the consumer's location
+    - Longitude (Float): Longitude coordinate of the consumer's location
+    - Smoker (String): Indicates if the consumer is a smoker ("Yes" or "No")
+    - Drink_Level (String): Consumer's drinking level ("Abstemious","Casual Drinker","Social Drinker")
+    - Transportation_Method (String): Primary method of transportation used by the consumer ("Public","Car","On Foot")
+    - Marital_Status (String): Marital status of the consumer ("Single" or "Married")
+    - Children (String): Indicates if the consumer has children, where "Independent" indicates independent children, and "Dependent" indicates dependent children. ("Independent","Dependent","Kids")
+    - Age (Integer): Age of the consumer 
+    - Occupation (String): Occupation of the consumer ("Student","Employed","Unemployed")
+    - Budget (String): Budget category of the consumer ("Low","Medium","High")
 
-    Table products:
-    - product_id (Integer, Primary Key)
-    - product_name (String)
-    - category (String)
-    - price_per_unit (Float)
-    - brand (String)
-    - product_description (Text)
+Table consumer_preferences:
+    - Consumer_ID (String, Foreign Key to consumers.Consumer_ID): Unique identifier for each consumer
+    - Preferred_Cuisine (String): Preferred cuisine type of the consumer
 
-    Table purchase_history:
-    - purchase_id (Integer, Primary Key)
-    - customer_id (Integer, Foreign Key to customer_profile.customer_id)
-    - product_id (Integer, Foreign Key to products.product_id)
-    - purchase_date (Date)
-    - quantity (Integer)
-    - total_amount (Float)
+Table ratings:
+    - Consumer_ID (String, Foreign Key to consumers.Consumer_ID): Unique identifier for each consumer
+    - Restaurant_ID (Integer, Foreign Key to restaurants.Restaurant_ID): Unique identifier for each restaurant
+    - Overall_Rating (Integer): Overall rating given by the consumer (0-2)
+    - Food_Rating (Integer): Rating of the food quality given by the consumer (0-2)
+    - Service_Rating (Integer): Rating of the service quality given by the consumer (0-2)
+
+Table restaurants:
+    - Restaurant_ID (Integer, Primary Key): Unique identifier for each restaurant
+    - Name (String): Name of the restaurant
+    - City (String): City where the restaurant is located
+    - State (String): State where the restaurant is located
+    - Country (String): Country where the restaurant is located
+    - Zip_Code (String): Zip code of the restaurant's location
+    - Latitude (Float): Latitude coordinate of the restaurant's location
+    - Longitude (Float): Longitude coordinate of the restaurant's location
+    - Alcohol_Service (String): Indicates if alcohol is served at the restaurant ("NaN","Wine & Beer","Full Bar")
+    - Smoking_Allowed (String): Indicates if smoking is allowed at the restaurant ("Yes","No","Smoking Section","Bar Only")
+    - Price (String): Price category of the restaurant ("Low","Medium","High")
+    - Franchise (String): Indicates if the restaurant is a franchise ("Yes" or "No")
+    - Area (String): Area where the restaurant is located ("Open" or "Closed")
+    - Parking (String): Indicates if parking is available at the restaurant ("NaN","Yes","Public","Valet")
+
+Table restaurant_cuisines:
+    - Restaurant_ID (Integer, Foreign Key to restaurants.Restaurant_ID): Unique identifier for each restaurant
+    - Cuisine (String): Type of cuisine served at the restaurant
+
+
 

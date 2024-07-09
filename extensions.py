@@ -250,11 +250,6 @@ def get_google_maps_loc(address):
     return None
 
 
-# def format_as_table(results):
-#     rows = []
-#     for row in results:
-#         rows.append("| " + " | ".join(str(value) for value in row) + " |")
-#     return "\n".join(rows)
 
 def format_as_table(results, keys):
     table = '<table border="1">\n<tr>'

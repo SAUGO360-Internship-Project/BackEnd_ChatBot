@@ -363,7 +363,7 @@ def ask():
             "content": db_schema_prompt + """
                 The user will be asking questions about a database with the schema described above. 
                 The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
-                Guidelines:
+                Guidelines to fill out answer fields:
                 1) Field Type: If the type of the field, which is given at the end of each field, is "string"; then, your answer for that field must be between double quotations.
                 2) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
                 3) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys. It is okay for the user to ask for directions to a certain location.
@@ -372,12 +372,12 @@ def ask():
                 {
                     "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Type: integer. Options: 1-10.
                     "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
-                    "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Type: string.
+                    "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Always put identifiers in the SQL queries between double quotations. Type: string.
                     "Location": Does the user sentence or question ask for directions? Type: string. Options: "Yes" or "No". 
                     "ChartName": The type of visualization or map to be generated if any. The user will be explicitly asking for the generation of a specific type of chart ("LineChart","BarChart","PieChart"). Or he will ask for directions to a certain location ("GoogleMaps"). If he doesn't ask for a chart or directions, reply with "None". Options: "LineChart","BarChart","PieChart","GoogleMaps","None". Type: string.
                 }
                 Important Notes:
-                1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message where he means that he wants the second option. 
+                1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message which means that he wants the second option. 
                 2) Location-related information (such as address, city, state) and contact information are not considered sensitive and you may retrieve them. If the user asks a location related question then you must fetch the full address that answers that question. When you write queries that fetch state or city, the data may be stored as an abbreviation; example: "California" and "CA".
             """
         }
@@ -533,6 +533,10 @@ def format_response_with_gpt(user_question, data, previous_conversations):
     message=[{"role":"system","content":
                 '''
                 Your goal is to format the final answer given by the user in a user-friendly way and a full brief sentence taking into consideration his feedback if he has any.
+                There are 2 cases:
+                Case 1:
+                If there only one answer is given then format the final answer given by the user in a user-friendly way. And at the end, ask a kind question similar to "Is there anything else I can assist you with?", but change this question often in order to avoid repitition.
+                Case 2:
                 If multiple answers are given then you must format them in the following manner:
                 *Brief introductory sentence*:
                 *Numbered List with each element on a new line*
