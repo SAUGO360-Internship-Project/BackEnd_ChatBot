@@ -23,7 +23,7 @@ from blueprints.user_bp import user_bp
 from blueprints.chat_bp import chat_bp,generate_sql_query,format_response_with_gpt
 from blueprints.fewshot_bp import fewshot_bp  # Import fewshot_bp
 from model.chat import Chat, Conversation, chat_schema, conversation_schema
-from model.test import CustomerProfile, Product, PurchaseHistory
+from model.test import Consumer,ConsumerPreference,Restaurant,RestaurantCuisine,Rating
 
 # Load environment variables
 load_dotenv()

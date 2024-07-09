@@ -1,40 +1,62 @@
 from extensions import db, ma
 
-class CustomerProfile(db.Model):
+class Consumer(db.Model):
     __bind_key__ = 'TestingData'
-    __tablename__ = 'customer_profile'
-    customer_id = db.Column(db.Integer, primary_key=True)
-    first_name = db.Column(db.String(100), nullable=False)
-    last_name = db.Column(db.String(100), nullable=False)
-    gender = db.Column(db.String(10), nullable=True)
-    date_of_birth = db.Column(db.Date, nullable=True)
-    email = db.Column(db.String(100), nullable=False)
-    phone_number = db.Column(db.String(20), nullable=True)
-    signup_date = db.Column(db.Date, nullable=True)
-    address = db.Column(db.String(255), nullable=True)
-    city = db.Column(db.String(100), nullable=True)
-    state = db.Column(db.String(100), nullable=True)
-    zip_code = db.Column(db.String(20), nullable=True)
+    __tablename__ = 'consumers'
+    Consumer_ID = db.Column(db.String(100), primary_key=True)
+    City = db.Column(db.String(100), nullable=True)
+    State = db.Column(db.String(100), nullable=True)
+    Country = db.Column(db.String(100), nullable=True)
+    Latitude = db.Column(db.Float, nullable=True)
+    Longitude = db.Column(db.Float, nullable=True)
+    Smoker = db.Column(db.String(50), nullable=True)
+    Drink_Level = db.Column(db.String(50), nullable=True)
+    Transportation_Method = db.Column(db.String(100), nullable=True)
+    Marital_Status = db.Column(db.String(100), nullable=True)
+    Children = db.Column(db.String(100), nullable=True)
+    Age = db.Column(db.Integer, nullable=True)
+    Occupation = db.Column(db.String(100), nullable=True)
+    Budget = db.Column(db.String(100), nullable=True)
 
-class Product(db.Model):
+class ConsumerPreference(db.Model):
     __bind_key__ = 'TestingData'
-    __tablename__ = 'products'
-    product_id = db.Column(db.Integer, primary_key=True)
-    product_name = db.Column(db.String(100), nullable=False)
-    category = db.Column(db.String(100), nullable=True)
-    price_per_unit = db.Column(db.Float, nullable=False)
-    brand = db.Column(db.String(100), nullable=True)
-    product_description = db.Column(db.Text, nullable=True)
+    __tablename__ = 'consumer_preferences'
+    Consumer_ID = db.Column(db.String(100), db.ForeignKey('consumers.Consumer_ID'), primary_key=True)
+    Preferred_Cuisine = db.Column(db.String(100), primary_key=True)
+    consumer = db.relationship('Consumer', backref=db.backref('preferences', lazy=True))
 
-class PurchaseHistory(db.Model):
+class Rating(db.Model):
     __bind_key__ = 'TestingData'
-    __tablename__ = 'purchase_history'
-    purchase_id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customer_profile.customer_id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.product_id'), nullable=False)
-    purchase_date = db.Column(db.Date, nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
-    total_amount = db.Column(db.Float, nullable=False)
+    __tablename__ = 'ratings'
+    Consumer_ID = db.Column(db.String(100), db.ForeignKey('consumers.Consumer_ID'), primary_key=True)
+    Restaurant_ID = db.Column(db.Integer, db.ForeignKey('restaurants.Restaurant_ID'), primary_key=True)
+    Overall_Rating = db.Column(db.Integer, nullable=True)
+    Food_Rating = db.Column(db.Integer, nullable=True)
+    Service_Rating = db.Column(db.Integer, nullable=True)
+    consumer = db.relationship('Consumer', backref=db.backref('ratings', lazy=True))
+    restaurant = db.relationship('Restaurant', backref=db.backref('ratings', lazy=True))
 
-    customer = db.relationship('CustomerProfile', backref=db.backref('purchases', lazy=True))
-    product = db.relationship('Product', backref=db.backref('purchases', lazy=True))
+class Restaurant(db.Model):
+    __bind_key__ = 'TestingData'
+    __tablename__ = 'restaurants'
+    Restaurant_ID = db.Column(db.Integer, primary_key=True)
+    Name = db.Column(db.String(100), nullable=True)
+    City = db.Column(db.String(100), nullable=True)
+    State = db.Column(db.String(100), nullable=True)
+    Country = db.Column(db.String(100), nullable=True)
+    Zip_Code = db.Column(db.String(20), nullable=True)
+    Latitude = db.Column(db.Float, nullable=True)
+    Longitude = db.Column(db.Float, nullable=True)
+    Alcohol_Service = db.Column(db.String(50), nullable=True)
+    Smoking_Allowed = db.Column(db.String(50), nullable=True)
+    Price = db.Column(db.String(50), nullable=True)
+    Franchise = db.Column(db.String(50), nullable=True)
+    Area = db.Column(db.String(100), nullable=True)
+    Parking = db.Column(db.String(100), nullable=True)
+
+class RestaurantCuisine(db.Model):
+    __bind_key__ = 'TestingData'
+    __tablename__ = 'restaurant_cuisines'
+    Restaurant_ID = db.Column(db.Integer, db.ForeignKey('restaurants.Restaurant_ID'), primary_key=True)
+    Cuisine = db.Column(db.String(100), primary_key=True)
+    restaurant = db.relationship('Restaurant', backref=db.backref('cuisines', lazy=True))

@@ -12,7 +12,9 @@ import chromadb.utils.embedding_functions as embedding_functions
 from chromadb.config import Settings
 import googlemaps
 import json
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # Initialize ChromaDB client with a persistent local path
 client_chroma = chromadb.PersistentClient(path="chroma_data", settings=Settings())
