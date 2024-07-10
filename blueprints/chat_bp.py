@@ -373,8 +373,8 @@ def ask():
                     "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Type: integer. Options: 1-10.
                     "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
                     "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Always put identifiers in the SQL queries between double quotations. Type: string.
-                    "Location": Does the user sentence or question ask for directions? Type: string. Options: "Yes" or "No". 
-                    "ChartName": The type of visualization or map to be generated if any. The user will be explicitly asking for the generation of a specific type of chart ("LineChart","BarChart","PieChart"). Or he will ask for directions to a certain location ("GoogleMaps"). If he doesn't ask for a chart or directions, reply with "None". Options: "LineChart","BarChart","PieChart","GoogleMaps","None". Type: string.
+                    "Location": Does the user sentence or question ask about a location? Type: string. Options: "Yes" or "No". 
+                    "ChartName": The type of visualization or map to be generated if any. The user may explicitly ask for the generation of a specific type of chart (e.g., 'LineChart', 'BarChart', 'PieChart') or a heatmap ('HeatMap'). Additionally, the user might request directions to a certain location ('GoogleMaps') or the creation of a triangle/polygon map based on three input locations to visualize a specific area ('TriangleMaps'). If none of these are requested, reply with 'None'. Options: 'LineChart', 'BarChart', 'PieChart', 'GoogleMaps', 'HeatMap', 'TriangleMaps', 'None'. Type: string.
                 }
                 Important Notes:
                 1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message which means that he wants the second option. 
@@ -437,26 +437,32 @@ def ask():
             else:
                 result_adjusted = [{"labelX": str(row[0]), "labelY": row[1]} for row in result]
                 chart_code = generate_chart_code(result_adjusted, keys[0], keys[1], chartname, chart_base_code)
-                formatted_response = f"This is your {chartname}: {chart_code}"
+                formatted_response = f"Here is your {chartname}: {chart_code}"
         elif len(result) > 30:
             keys=data.keys()
             keys=list(keys)
             formatted_response = format_as_table(result,keys)
         elif location == "Yes" and chartname =="GoogleMaps":
             if len(result) > 1:
-                if len(result)>30:
-                    keys=data.keys()
-                    keys=list(keys)
-                    formatted_response= format_as_table(result,keys)
-                else:
-                    formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+                formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
             else:
-                address = format_address(result)
+                address = format_address(result[0])
                 lat , lng = get_google_maps_loc(address)
-                map_code = generate_map_code(lat,lng,map_base_code)
+                coordinates=[{"lat":lat , "lng":lng }]
+                map_code = generate_map_code(coordinates,chartname,map_base_code)
                 formatted_response = f"Here is the map to {address}: {map_code}"
+        elif location == "Yes" and chartname == "TriangleMaps":
+            if len(result)==3:
+                coordinates=[]
+                for row in result:
+                    address = format_address(row)
+                    lat , lng =get_google_maps_loc(address)
+                    coordinates.append({"lat":lat , "lng":lng})
+                map_code=generate_map_code(coordinates,chartname,map_base_code)
+                formatted_response = f"Here is your requested area: {map_code}"
+            else:
+                formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
         else:
-            # Format the result with GPT-4
             formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
 
        # Store the conversation

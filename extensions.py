@@ -232,22 +232,37 @@ def contains_data_altering_operations(sql_query):
 def format_address(result):
     if not result or len(result) == 0:
         return None
-    address_data = result[0]
+    address_data = result
     address_parts = [str(part) for part in address_data if part]
     print(", ".join(address_parts))
     return ", ".join(address_parts)
 
-# Helper function to get Google Maps URL
+# Helper function to get Google Maps coordinates
 def get_google_maps_loc(address):
     if not address:
         return None
-    geocode_result = gmaps.geocode(address)
-    if geocode_result:
-        location = geocode_result[0]['geometry']['location']
-        print(location)
-        lat, lng = location['lat'], location['lng']
-        return lat, lng
+    
+    def attempt_geocode(addr_parts):
+        addr = ", ".join(addr_parts)
+        try:
+            geocode_result = gmaps.geocode(addr)
+            if geocode_result:
+                location = geocode_result[0]['geometry']['location']
+                print(location)
+                return location['lat'], location['lng']
+        except Exception as e:
+            print(f"Error geocoding address {addr}: {e}")
+        return None
+
+    address_parts = address.split(", ")
+    for i in range(len(address_parts)):
+        result = attempt_geocode(address_parts[i:])
+        if result is not None:
+            return result
+    
+    print("Could not geocode address with any combination.")
     return None
+
 
 
 
@@ -281,7 +296,12 @@ def generate_chart_code(data, xlabel, ylabel, chart_name, base_code):
         .replace("{labelY}", ylabel)
 
 
-def generate_map_code(lat, lng, base_code):
+def generate_map_code(coordinates, map_type, base_code):
+    if map_type=="GoogleMaps":
+        map_type="normal"
+    elif map_type=="TriangleMaps":
+        map_type="triangle"
+    coordinates_str = json.dumps(coordinates)
     return base_code\
-        .replace("{lat}", str(lat))\
-        .replace("{lng}", str(lng))
+        .replace("{coordinates}", coordinates_str)\
+        .replace("{type}", f"'{map_type}'")

@@ -1,21 +1,66 @@
 const MapDisplay = () => {
   const mapRef = useRef(null);
-  const lat = {lat}; 
-  const lng = {lng}; 
+  const infoWindowRef = useRef(null);
+  const coordinates = {coordinates};
+  const type = {type};
 
   useEffect(() => {
+    if (!mapRef.current) return;
+
     const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: lat, lng: lng },
-      zoom: 15,
+      center: { lat: coordinates[0].lat, lng: coordinates[0].lng },
+      zoom: type === 'triangle' ? 5 : 15,
+      mapTypeId: 'terrain',
     });
 
-    new window.google.maps.Marker({
-      position: { lat: lat, lng: lng },
-      map,
-    });
-  }, [lat, lng]);
+    if (type === 'triangle') {
+      const triangleCoords = coordinates.map(coord => ({ lat: coord.lat, lng: coord.lng }));
+
+      const triangle = new window.google.maps.Polygon({
+        paths: triangleCoords,
+        strokeColor: '#FF0000',
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+        fillColor: '#FF0000',
+        fillOpacity: 0.35,
+      });
+
+      triangle.setMap(map);
+
+      infoWindowRef.current = new window.google.maps.InfoWindow();
+
+      triangle.addListener('click', (event) => showArrays(event, triangle, map));
+    } else if (type === 'normal') {
+      new window.google.maps.Marker({
+        position: { lat: coordinates[0].lat, lng: coordinates[0].lng },
+        map,
+      });
+    }
+  }, [coordinates, type]);
+
+  const showArrays = (event, polygon, map) => {
+    const vertices = polygon.getPath();
+    let contentString =
+      '<b>Triangle Polygon</b><br>' +
+      'Clicked location: <br>' +
+      event.latLng.lat() +
+      ',' +
+      event.latLng.lng() +
+      '<br>';
+
+    for (let i = 0; i < vertices.getLength(); i++) {
+      const xy = vertices.getAt(i);
+      contentString +=
+        '<br>' + 'Coordinate ' + i + ':<br>' + xy.lat() + ',' + xy.lng();
+    }
+
+    infoWindowRef.current.setContent(contentString);
+    infoWindowRef.current.setPosition(event.latLng);
+    infoWindowRef.current.open(map);
+  };
 
   return <div ref={mapRef} style={{ height: '400px', width: '100%' }} />;
 };
 
 export default MapDisplay;
+
