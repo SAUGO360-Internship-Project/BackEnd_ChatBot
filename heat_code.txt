@@ -1,0 +1,59 @@
+const Legend = ({ min, max }) => {
+    const gradient = [];
+    const steps = 10;
+    for (let i = 0; i <= steps; i++) {
+        const value = min + ((max - min) / steps) * i;
+        gradient.push(`rgba(255, 99, 132, ${value / 100})`);
+    }
+
+    return (
+        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+            <div style={{ marginBottom: '10px', fontWeight: 'bold' }}>Intensity Legend</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ marginRight: '10px' }}>{min}%</div>
+                {gradient.map((color, index) => (
+                    <div
+                        key={index}
+                        style={{
+                            width: '20px',
+                            height: '20px',
+                            backgroundColor: color,
+                            marginRight: index < steps ? '2px' : '0',
+                        }}
+                    />
+                ))}
+                <div style={{ marginLeft: '10px' }}>{max}%</div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', padding: '0 20px' }}>
+                <div style={{ flexBasis: '33%'}}>Low</div>
+                <div style={{ flexBasis: '33%'}}>Medium</div>
+                <div style={{ flexBasis: '33%'}}>High</div>
+            </div>
+        </div>
+    );
+};
+
+const HeatMap = () => {
+    const xLabels = {xLabels};
+    const yLabels = {yLabels};
+    const heatMapData = {heatMapData};
+
+    return (
+        <div>
+            <h2>Heat Map Example</h2>
+            <HeatMapGrid
+                data={heatMapData}
+                xLabels={xLabels}
+                yLabels={yLabels}
+                cellStyle={(background, value, min, max, data, x, y) => ({
+                    background: `rgba(255, 99, 132, ${value / 100})`,
+                    fontSize: '11px',
+                })}
+                cellRender={(value) => value && `${value}%`}
+            />
+            <Legend min={0} max={100} />
+        </div>
+    );
+};
+
+export default HeatMap;

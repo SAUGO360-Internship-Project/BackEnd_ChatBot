@@ -305,3 +305,11 @@ def generate_map_code(coordinates, map_type, base_code):
     return base_code\
         .replace("{coordinates}", coordinates_str)\
         .replace("{type}", f"'{map_type}'")
+
+
+def generate_heatmap_code(xlabels, ylabels, heatmapdata, base_code):
+
+    return base_code\
+        .replace("{xLabels}", f'{xlabels}')\
+        .replace("{yLabels}", f'{ylabels}')\
+        .replace("{heatMapData}", f'{heatmapdata}')

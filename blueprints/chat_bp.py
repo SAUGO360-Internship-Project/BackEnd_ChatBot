@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code,generate_heatmap_code
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -34,6 +34,9 @@ with open('chart_code.txt', 'r') as file:
 
 with open('map_code.txt', 'r') as file:
     map_base_code = file.read()
+
+with open('heat_code.txt', 'r') as file:
+    heat_base_code = file.read()
 
 # Create a chat
 @chat_bp.route('/chats', methods=['POST'])
@@ -374,11 +377,12 @@ def ask():
                     "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
                     "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Always put identifiers in the SQL queries between double quotations. Type: string.
                     "Location": Does the user sentence or question ask about a location? Type: string. Options: "Yes" or "No". 
-                    "ChartName": The type of visualization or map to be generated if any. The user may explicitly ask for the generation of a specific type of chart (e.g., 'LineChart', 'BarChart', 'PieChart') or a heatmap ('HeatMap'). Additionally, the user might request directions to a certain location ('GoogleMaps') or the creation of a triangle/polygon map based on three input locations to visualize a specific area ('TriangleMaps'). If none of these are requested, reply with 'None'. Options: 'LineChart', 'BarChart', 'PieChart', 'GoogleMaps', 'HeatMap', 'TriangleMaps', 'None'. Type: string.
+                    "ChartName": The type of visualization or map to be generated if any. The user may explicitly ask for the generation of a specific type of chart (e.g., 'LineChart', 'BarChart', 'PieChart') or a heatmap which is a representation of data points where individual values are depicted by varying colors, please note that heatmaps are not related to actual maps; therefore, they dont require any address ('HeatMap'). Additionally, the user might request directions to a certain location ('GoogleMaps') or the creation of a triangle/polygon map based on three input locations to visualize a specific area ('TriangleMaps'). If none of these are requested, reply with 'None'. Options: 'LineChart', 'BarChart', 'PieChart', 'GoogleMaps', 'HeatMap', 'TriangleMaps', 'None'. Type: string.
                 }
                 Important Notes:
                 1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message which means that he wants the second option. 
                 2) Location-related information (such as address, city, state) and contact information are not considered sensitive and you may retrieve them. If the user asks a location related question then you must fetch the full address that answers that question. When you write queries that fetch state or city, the data may be stored as an abbreviation; example: "California" and "CA".
+                3) HeatMaps: HeatMaps are not related in any way to actual location-based maps. Never fetch locations for a heatmap unless the user explicitly asks you to do so. When the user asks for heatmap, he will specify what data would be the x-axis, y-axis and data points. You must fetch what he wants in the following order: x-axis, y axis, data points.
             """
         }
     ]
@@ -438,6 +442,28 @@ def ask():
                 result_adjusted = [{"labelX": str(row[0]), "labelY": row[1]} for row in result]
                 chart_code = generate_chart_code(result_adjusted, keys[0], keys[1], chartname, chart_base_code)
                 formatted_response = f"Here is your {chartname}: {chart_code}"
+        elif chartname== "HeatMap":
+            keys=data.keys()
+            keys=list(keys)
+            print(keys)
+            if len(keys)>3:
+                formatted_response = format_as_table(result,keys)
+            else:
+                xlabels = list(set([row[0] for row in result]))
+                ylabels = list(set([row[1] for row in result]))
+        
+                # Initialize the heatmap data with zeros
+                heatmap_data = [[0 for _ in xlabels] for _ in ylabels]
+        
+                # Populate the heatmap data with actual values
+                for row in result:
+                    x_index = xlabels.index(row[0])
+                    y_index = ylabels.index(row[1])
+                    heatmap_data[y_index][x_index] = row[2]
+                print(heatmap_data)
+                heat_code = generate_heatmap_code(xlabels, ylabels, heatmap_data, heat_base_code)
+                formatted_response = f"Here is your heatmap: {heat_code}"
+
         elif len(result) > 30:
             keys=data.keys()
             keys=list(keys)
