@@ -34,17 +34,16 @@ const Legend = ({ min, max }) => {
 };
 
 const HeatMap = () => {
-    const xLabels = {xLabels};
-    const yLabels = {yLabels};
-    const heatMapData = {heatMapData};
+    const X = {xLabels};
+    const Y = {yLabels};
+    const HeatData = {heatMapData};
 
     return (
         <div>
-            <h2>Heat Map Example</h2>
             <HeatMapGrid
-                data={heatMapData}
-                xLabels={xLabels}
-                yLabels={yLabels}
+                data={HeatData}
+                xLabels={X}
+                yLabels={Y}
                 cellStyle={(background, value, min, max, data, x, y) => ({
                     background: `rgba(255, 99, 132, ${value / 100})`,
                     fontSize: '11px',
