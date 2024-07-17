@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code,generate_heatmap_code
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code,generate_heatmap_code,allowed_file,process_pdf,chunk_pdf_to_chroma,extract_text_with_ocr
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -10,6 +10,17 @@ import chromadb
 from chromadb.config import Settings
 import hashlib
 import json
+import pdfplumber
+import pytesseract
+from PIL import Image
+from werkzeug.utils import secure_filename
+
+
+ALLOWED_EXTENSIONS = {'pdf'}
+UPLOAD_FOLDER = 'uploads/'
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 
 chat_bp = Blueprint('chat_bp', __name__)
@@ -156,8 +167,8 @@ def get_conversations(chat_id):
 
         if chat.user_id != user_id:
             return jsonify({"message": "Unauthorized"}), 403
-
-        conversations = Conversation.query.filter_by(chat_id=chat_id).all()
+        
+        conversations = Conversation.query.filter_by(chat_id=chat_id).order_by(Conversation.timestamp).all()
         return jsonify(conversations_schema.dump(conversations)), 200
     except Exception as e:
         print(f"Error retrieving conversations: {e}")
@@ -339,6 +350,86 @@ def get_all_feedback():
         print(f"Error retrieving feedback: {e}")
         return jsonify({"message": "Internal Server Error"}), 500
     
+
+
+# Route for PDF Upload
+@chat_bp.route('/upload_pdf', methods=['POST'])
+def upload_pdf():
+    if 'file' not in request.files:
+        return jsonify({"message": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"message": "No selected file"}), 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(UPLOAD_FOLDER, filename))
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"message": "Authentication token is required"}), 401
+        try:
+            user_id = decode_token(token)
+        except Exception as e:
+            print(f"Error decoding token: {e}")
+            return jsonify({"message": "Invalid token"}), 401
+        process_result = process_pdf(filename, user_id)
+        return jsonify(process_result), 201
+    else:
+        return jsonify({"message": "Allowed file types are pdf"}), 400
+
+
+# View pdf
+@chat_bp.route('/view_pdfs', methods=['GET'])
+def view_pdfs():
+    token = extract_auth_token(request)
+    if not token:
+        return jsonify({"message": "Authentication token is required"}), 401
+    try:
+        user_id = decode_token(token)
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        return jsonify({"message": "Invalid token"}), 401
+    collection_name = f"user_{user_id}_pdfs"
+    collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
+
+    if not collection:
+        return jsonify({"message": "No PDFs found for this user."}), 404
+    
+    items = collection.get(include=["metadatas"])
+    print(items)
+    metadata_list = items.get('metadatas', [])
+    pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
+    
+    return jsonify({"pdfs": pdf_titles}), 200
+
+# Delete pdf
+@chat_bp.route('/delete_pdf/<string:pdf_title>', methods=['DELETE'])
+def delete_pdf(pdf_title):
+    token = extract_auth_token(request)
+    if not token:
+        return jsonify({"message": "Authentication token is required"}), 401
+    try:
+        user_id = decode_token(token)
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        return jsonify({"message": "Invalid token"}), 401    
+    collection_name = f"user_{user_id}_pdfs"
+    
+    collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
+
+    if not collection:
+        return jsonify({"message": "No PDFs found for this user."}), 404
+    
+    items = collection.get(include=["metadatas"], where={'pdf_title': pdf_title})
+    print(items)
+    
+    ids_to_delete = items['ids']    
+
+    collection.delete(ids=ids_to_delete)
+    
+    file_path = os.path.join(UPLOAD_FOLDER, f"{pdf_title}.pdf")
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    return jsonify({"message": f"PDF '{pdf_title}' and its chunks successfully deleted."}), 200
 
 
 
