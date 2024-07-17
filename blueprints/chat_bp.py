@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify,current_app
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
-from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code,generate_heatmap_code,allowed_file,process_pdf,chunk_pdf_to_chroma,extract_text_with_ocr
+from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code,generate_heatmap_code,allowed_file,process_pdf,chunk_pdf_to_chroma,extract_text_with_ocr,select_relevant_pdf_chunks
 import os
 from sqlalchemy import text
 from blueprints.fewshot_bp import fewshot_bp
@@ -439,7 +439,14 @@ def ask():
     data = request.json
     user_question = data.get('question')
     chat_id = data.get('chat_id')
-
+    token = extract_auth_token(request)
+    if not token:
+        return "Authentication token is required"
+    try:
+        user_id = decode_token(token)
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        return "Invalid token"
     if not user_question or not chat_id:
         return jsonify({"message": "Question and chat_id are required"}), 400
 
@@ -450,30 +457,53 @@ def ask():
     # Fetch previous conversations for context
     previous_conversations = Conversation.query.filter_by(chat_id=chat_id).order_by(Conversation.timestamp).all()
 
+    collection_name = f"user_{user_id}_pdfs"
+    collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
+
+    if not collection:
+        return jsonify({"message": "No PDFs found for this user."}), 404
+    
+    items = collection.get(include=["metadatas"])
+    metadata_list = items.get('metadatas', [])
+    pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
+    print(pdf_titles)
+
     # Create the system message with all instructions and context
     conversation_history = [
         {
             "role": "system",
-            "content": db_schema_prompt + """
-                The user will be asking questions about a database with the schema described above. 
-                The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
-                Guidelines to fill out answer fields:
-                1) Field Type: If the type of the field, which is given at the end of each field, is "string"; then, your answer for that field must be between double quotations.
-                2) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
-                3) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys. It is okay for the user to ask for directions to a certain location.
-                4) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
-                Your primary objective is to read each question and return 4 fields as JSON string as follows:
-                {
-                    "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Type: integer. Options: 1-10.
-                    "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
-                    "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Always put identifiers in the SQL queries between double quotations. Type: string.
-                    "Location": Does the user sentence or question ask about a location? Type: string. Options: "Yes" or "No". 
-                    "ChartName": The type of visualization or map to be generated if any. The user may explicitly ask for the generation of a specific type of chart (e.g., 'LineChart', 'BarChart', 'PieChart') or a heatmap which is a representation of data points where individual values are depicted by varying colors, please note that heatmaps are not related to actual maps; therefore, they dont require any address ('HeatMap'). Additionally, the user might request directions to a certain location ('GoogleMaps') or the creation of a triangle/polygon map based on three input locations to visualize a specific area ('TriangleMaps'). If none of these are requested, reply with 'None'. Options: 'LineChart', 'BarChart', 'PieChart', 'GoogleMaps', 'HeatMap', 'TriangleMaps', 'None'. Type: string.
-                }
-                Important Notes:
-                1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message which means that he wants the second option. 
-                2) Location-related information (such as address, city, state) and contact information are not considered sensitive and you may retrieve them. If the user asks a location related question then you must fetch the full address that answers that question. When you write queries that fetch state or city, the data may be stored as an abbreviation; example: "California" and "CA".
-                3) HeatMaps: HeatMaps are not related in any way to actual location-based maps. Never fetch locations for a heatmap unless the user explicitly asks you to do so. When the user asks for heatmap, he will specify what data would be the x-axis, y-axis and data points. You must fetch what he wants in the following order: x-axis, y axis, data points.
+            "content": db_schema_prompt + f"""
+                You will be handling 2 cases of user questions, and you have to know which case to follow:
+                Case 1:
+                    The user asks questions about the database with the schema described above. 
+                    The user does not have access to the column names in the database, so he may ask questions that do not contain the column name specifically; therefore, you must be able to deduce what he wants.
+                    Guidelines to fill out answer fields:
+                    1) Field Type: If the type of the field, which is given at the end of each field, is "string"; then, your answer for that field must be between double quotations.
+                    2) SQL command: The sentence written in the "Answer" field should be a valid SQL command that can be executed in PostgreSQL.
+                    3) Data Sensitivity: Do not generate SQL commands that retrieve sensitive information such as passwords, primary keys, IDs, or API keys. It is okay for the user to ask for directions to a certain location.
+                    4) Read-Only Operations: Do not generate SQL queries that involve data-altering operations such as DELETE or UPDATE.
+                    Your primary objective is to read each question and return 5 fields as JSON string as follows:
+                    {{
+                        "Score": On a scale of 1-10, how relevant is the user question or statement to the content of the database where 1 is the lowest and 10 is the highest. Be cautious that the user may be sending a follow-up question or statement that may appear irrelevant at first glance, but it could be relevant. Type: integer. Options: 1-10.
+                        "Executable": An "Answer" is executable if it satisfies the above guidelines. If at least one of the guidelines fails then answer with "No" and write "NULL" in the "Answer" field. Type: string. Options: "Yes" or "No".                
+                        "Answer": one or multiple SQL queries (if they are multiple then they should be separated by ;) to fetch the required information from the database without any additional text or explanation. The command(s) should be compatible with PostgreSQL. Always put identifiers in the SQL queries between double quotations. Type: string.
+                        "Location": Does the user sentence or question ask about a location? Type: string. Options: "Yes" or "No". 
+                        "ChartName": The type of visualization or map to be generated if any. The user may explicitly ask for the generation of a specific type of chart (e.g., 'LineChart', 'BarChart', 'PieChart') or a heatmap which is a representation of data points where individual values are depicted by varying colors, please note that heatmaps are not related to actual maps; therefore, they dont require any address ('HeatMap'). Additionally, the user might request directions to a certain location ('GoogleMaps') or the creation of a triangle/polygon map based on three input locations to visualize a specific area ('TriangleMaps'). If none of these are requested, reply with 'None'. Options: 'LineChart', 'BarChart', 'PieChart', 'GoogleMaps', 'HeatMap', 'TriangleMaps', 'None'. Type: string.
+                    }}
+                    Important Notes:
+                    1) Contextual Understanding: Understand and maintain context as the user may ask follow-up questions. In some cases, follow-up questions or statements may be unclear at first. For example, the user could ask for addresses which are returned to him in a list, then he sends "2" in a follow-up message which means that he wants the second option. 
+                    2) Location-related information (such as address, city, state) and contact information are not considered sensitive and you may retrieve them. If the user asks a location related question then you must fetch the full address that answers that question. When you write queries that fetch state or city, the data may be stored as an abbreviation; example: "California" and "CA".
+                    3) HeatMaps: HeatMaps are not related in any way to actual location-based maps. Never fetch locations for a heatmap unless the user explicitly asks you to do so. When the user asks for heatmap, he will specify what data would be the x-axis, y-axis and data points. You must fetch what he wants in the following order: x-axis, y axis, data points.
+                Case 2:
+                    The user asks questions about certain PDF documents with the following titles: {pdf_titles} 
+                    Your primary objective is to read each question and return 5 fields as JSON string as follows:
+                    {{
+                        "Score": 10. Type: integer.
+                        "Executable": "PDF". Type: string.
+                        "Answer": the title of the PDF that holds the information that the user is asking about. Type: string.
+                        "Location": "No". Type: string. 
+                        "ChartName": "None". Type: string.
+                    }}
             """
         }
     ]
@@ -498,13 +528,31 @@ def ask():
 
     # Add the current user question
     conversation_history.append({"role": "user", "content": user_question})
-    # Get user_id from the chat
-    chat = Chat.query.get(chat_id)
-    if not chat:
-        return jsonify({"message": "Chat not found"}), 404
-    user_id = chat.user_id
+    
     # Generate SQL query and extract relevant fields
     sql_query, score, executable, location, chartname = generate_sql_query(user_question, conversation_history, user_id)
+
+    if executable== "PDF":
+        relevant_chunks = select_relevant_pdf_chunks(user_question, user_id, sql_query)
+        response=get_pdf_answer(user_question,relevant_chunks,sql_query,chat_id)
+        try:
+            conversation = Conversation(
+            chat_id=chat_id,
+            user_query=user_question,
+            response=response,
+            sql_query=sql_query,
+            score=score,
+            executable=executable,
+            location=location,
+            chartname=chartname
+            )
+            db.session.add(conversation)
+            db.session.commit()
+
+            return jsonify({"message": response}), 201
+        except Exception as e:
+            print(f"Error: {e}")
+            return jsonify({"message": str(e)}), 500
 
     if score < 4:
         return jsonify({"message": "I'm here to answer questions related to the database. Could you please ask something relevant?"}), 403
@@ -561,7 +609,7 @@ def ask():
             formatted_response = format_as_table(result,keys)
         elif location == "Yes" and chartname =="GoogleMaps":
             if len(result) > 1:
-                formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+                formatted_response = format_response_with_gpt(user_question, result, chat_id)
             else:
                 address = format_address(result[0])
                 lat , lng = get_google_maps_loc(address)
@@ -578,9 +626,9 @@ def ask():
                 map_code=generate_map_code(coordinates,chartname,map_base_code)
                 formatted_response = f"Here is your requested area: {map_code}"
             else:
-                formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+                formatted_response = format_response_with_gpt(user_question, result, chat_id)
         else:
-            formatted_response = format_response_with_gpt(user_question, result, previous_conversations)
+            formatted_response = format_response_with_gpt(user_question, result, chat_id)
 
        # Store the conversation
         conversation = Conversation(
@@ -652,7 +700,7 @@ def generate_sql_query(user_question, conversation_history,user_id):
 
 
 
-def format_response_with_gpt(user_question, data, previous_conversations):
+def format_response_with_gpt(user_question, data, chat_id):
     message=[{"role":"system","content":
                 '''
                 Your goal is to format the final answer given by the user in a user-friendly way and a full brief sentence taking into consideration his feedback if he has any.
@@ -669,6 +717,7 @@ def format_response_with_gpt(user_question, data, previous_conversations):
                 *Appropriate question asking the user to choose*   
                 '''
               }]
+    previous_conversations = Conversation.query.filter_by(chat_id=chat_id, executable="Yes").order_by(Conversation.timestamp).all()
     for convo in previous_conversations:
         user_query_with_feedback = convo.user_query
         feedbacks = Feedback.query.filter_by(conversation_id=convo.id, feedback_type='negative').all()
@@ -689,3 +738,39 @@ def format_response_with_gpt(user_question, data, previous_conversations):
     return response.choices[0].message.content.strip()
 
 
+def get_pdf_answer(user_question,relevant_chunks,pdf_title,chat_id):
+    message=[{"role":"system","content":
+                '''
+                You will be given chunks of a PDF that are labeled by page number and chunk number. Each chunk is half a page long.
+                The user will also give you the title of that PDF. 
+                You must know that these chunks may not be in order and may not be consecutive. 
+                Then, the user will be asking you a question.
+                Your main goal is to read these chunks carefully, find an answer to the user question, and format it in a user-friendly way and a full brief sentence taking into consideration his feedback if he has any.
+                Keep in mind that you might not need to use all the chunks to find an answer, as the answer might be in only one chunk.
+                And at the end, ask a kind question similar to "Is there anything else I can assist you with?", but change this question often in order to avoid repitition.
+                '''
+              }]
+    previous_conversations = Conversation.query.filter_by(chat_id=chat_id, executable="PDF").order_by(Conversation.timestamp).all()
+
+    for convo in previous_conversations:
+        user_query_with_feedback = convo.user_query
+        feedbacks = Feedback.query.filter_by(conversation_id=convo.id, feedback_type='negative').all()
+        for feedback in feedbacks:
+            user_query_with_feedback += f" (Negative feedback on assistant response: {feedback.feedback_comment})"
+        message.append({"role": "user", "content": user_query_with_feedback})
+        message.append({"role": "assistant", "content": convo.response})
+    
+    prompt = f"PDF title: {pdf_title}\n\n"
+    for chunk in relevant_chunks:
+        prompt += f"(Page {chunk['page_number']}, Chunk {chunk['chunk_number']}):\n{chunk['chunk_text']}\n\n"
+    prompt += f"User Question: {user_question}\n\n"
+    print(prompt)
+    message.append({'role':'user','content':prompt})
+    
+    response = client.chat.completions.create(
+        model='gpt-4o',  
+        messages=message,
+        max_tokens=500
+    )
+    
+    return response.choices[0].message.content.strip()

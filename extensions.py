@@ -385,3 +385,37 @@ def chunk_pdf_to_chroma(file_path, collection_name):
         )
 
     return f"Successfully processed and stored {len(chunks)} chunks from {file_path} in Chroma collection '{collection_name}'"
+
+
+
+
+def select_relevant_pdf_chunks(user_question, user_id,pdf_title, top_n=5, distance_threshold=1.0):
+    user_embedding = get_embeddings(user_question)
+    relevant_chunks = []
+
+    # Get the user-specific PDF collection
+    collection_name = f"user_{user_id}_pdfs"
+    collection = client_chroma.get_collection(name=collection_name, embedding_function=openai_ef)
+    if not collection:
+        return "No PDFs found for this user."
+
+    # Query the collection for the most relevant chunks
+    results = collection.query(
+        query_embeddings=[user_embedding],
+        n_results=top_n,
+        where={'pdf_title':pdf_title},
+        include=['distances', 'metadatas']
+    )
+
+    for distances, metadata_list in zip(results['distances'], results['metadatas']):
+        for distance, metadata in zip(distances, metadata_list):
+            print(distance)
+            if distance < distance_threshold:
+                relevant_chunks.append({
+                    "ids": metadata.get('ids'),
+                    "chunk_text": metadata.get('chunk_text'),
+                    "page_number": metadata.get('page_number'),
+                    "chunk_number": metadata.get('chunk_number')
+                    })
+
+    return relevant_chunks
