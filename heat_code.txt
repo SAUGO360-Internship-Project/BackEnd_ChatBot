@@ -48,7 +48,7 @@ const HeatMap = () => {
                     background: `rgba(255, 99, 132, ${value / 100})`,
                     fontSize: '11px',
                 })}
-                cellRender={(value) => value && `${value}%`}
+                cellRender={(value) => value && `${value}`}
             />
             <Legend min={0} max={100} />
         </div>
