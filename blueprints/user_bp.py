@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
+import pyotp
+import qrcode
 from model.user import User, user_schema
-from extensions import db, bcrypt, validate_email, validate_password, validate_username_format, extract_auth_token, decode_token, create_token
+from extensions import db, bcrypt, validate_email, validate_password, validate_username_format, extract_auth_token, decode_token, create_token, verify_otp
 
 user_bp = Blueprint('user_bp', __name__)
 
@@ -40,20 +42,27 @@ def add_user():
         if User.query.filter((User.user_name == user_name) | (User.email == email)).first():
             return jsonify({"message": "Username or email already used!"}), 400
 
-        new_user = User(user_name=user_name, email=email, password=password)
+         # Generate secret key and enable 2FA for the user
+        secret_key = pyotp.random_base32()
+        new_user = User(user_name=user_name, email=email, password=password, secret_key=secret_key)
         db.session.add(new_user)
         db.session.commit()
 
-
+        # Get QR code URL for the user
+        qr_code_url = pyotp.TOTP(new_user.secret_key).provisioning_uri(new_user.email, issuer_name="Intelligent Chatbot")
+        #qrcode.make(qr_code_url).save("totp.png")
+        
         # Serialize the new user object
         serialized_user = user_schema.dump(new_user)
 
+        # Add QR code URL to the serialized user data
+        serialized_user['qr_code_url'] = qr_code_url
+        
         # Return the serialized user data
         return jsonify(serialized_user), 201
 
     except Exception as e:
         return jsonify({"message": str(e)}), 400
-        #return jsonify({"message": "Invalid JSON format. Ensure the request body is correctly formatted JSON."}), 400
         
         
 @user_bp.route('/user', methods=['DELETE'])
@@ -87,28 +96,33 @@ def delete_user():
 def authentication():
     try:
         data = request.json
-
+        
         # Ensure all required fields are present
-        if('user_name' not in data or 'password' not in data):
-            return jsonify({"message": "Missing required fields. The 'user_name' and 'password' should be sent."}), 400
+        if('user_name' not in data or 'password' not in data or 'otp' not in data):
+            return jsonify({"message": "The user was not added. The 'user_name' and 'password' and 'otp' should be sent."}), 400
 
         # Extract data from JSON
         user_name = data['user_name']
         password = data['password']
+        otp = data['otp'] 
+
 
         # Validate the data types of the required fields
         if (not isinstance(user_name, str)  or not isinstance(password, str)):
             return jsonify({"message": "The user was not authenticated. The 'user_name' and the 'password' should be of string type."}), 400
         
         # Ensure all required fields are not null
-        if user_name=="" or password=="":
-            return jsonify({"message": "Values of 'user_name' and 'password' cannot be empty"}), 400
+        if user_name=="" or password=="" or otp=="":
+            return jsonify({"message": "Values of 'user_name', 'password' and 'otp' cannot be empty"}), 400
         
         user = User.query.filter_by(user_name=user_name).first()
         if user:
             if bcrypt.check_password_hash(user.hashed_password, password):
-                token = create_token(user.id)
-                return jsonify({"token": token})
+                if verify_otp(user, otp):
+                    token = create_token(user.id)
+                    return jsonify({"token": token})
+                else:
+                    return jsonify({"message": "Invalid OTP."}), 401 
             else:
                 return jsonify({"message": "Username and Password do not match."}), 401
         else:
@@ -116,3 +130,5 @@ def authentication():
 
     except Exception as e:
         return jsonify({"message": str(e)}), 400
+    
+    

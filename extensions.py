@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from datetime import datetime, timedelta
 import jwt, re
 import os
+import pyotp
 from openai import OpenAI
 import numpy as np
 import chromadb
@@ -163,6 +164,21 @@ def validate_password(password):
         number_pattern.search(password) is not None and
         special_symbol_pattern.search(password) is not None
     )
+
+# Verify OTP during login
+def verify_otp(user, otp):
+    """
+    Verify the given OTP for a user.
+
+     Parameters:
+    - user (User): The user object.
+    - otp (str): The OTP to verify.
+
+    Returns:
+    - bool: True if the OTP is valid, False otherwise.
+    """
+    totp = pyotp.TOTP(user.secret_key)
+    return totp.verify(otp)
 
 
 def get_embeddings(text):
