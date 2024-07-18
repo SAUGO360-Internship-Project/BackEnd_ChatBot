@@ -389,7 +389,7 @@ def view_pdfs():
         print(f"Error decoding token: {e}")
         return jsonify({"message": "Invalid token"}), 401
     collection_name = f"user_{user_id}_pdfs"
-    collection = client_chroma.get_collection(name=collection_name,embedding_function=openai_ef)
+    collection = client_chroma.get_or_create_collection(name=collection_name,embedding_function=openai_ef)
 
     if not collection:
         return jsonify({"message": "No PDFs found for this user."}), 404
