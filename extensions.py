@@ -18,6 +18,9 @@ import pdfplumber
 import pytesseract
 from PIL import Image
 from werkzeug.utils import secure_filename
+from email.message import EmailMessage
+import smtplib
+from email.utils import formataddr
 
 load_dotenv()
 
@@ -40,6 +43,8 @@ collection = client_chroma.get_collection(name=collection_name,embedding_functio
 
 
 SECRET_KEY= os.getenv('SECRET_KEY')
+EMAIL = os.getenv('EMAIL')
+PASS = os.getenv('PASS')
 
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -180,6 +185,71 @@ def verify_otp(user, otp):
     totp = pyotp.TOTP(user.secret_key)
     return totp.verify(otp)
 
+
+def send_email (token, recipient, user_name):
+    """
+    Sends an email with a reset code to the specified recipient.
+
+    Parameters:
+    - token (str): The reset code to be included in the email.
+    - recipient (str): The email address of the recipient.
+    - user_name (str): The name of the user receiving the reset code.
+
+    Returns:
+    - None
+    """ 
+    # Define the sender's name and email address
+    sender_name = "Intelligent Chatbot IT Team"
+    sender_email = EMAIL
+
+    # Format the sender's name and email address
+    formatted_sender = formataddr((sender_name, sender_email))
+    
+    sender = EMAIL
+    recipient = recipient
+    
+    message = f'Dear {user_name}, \n\nYour Chatbot account reset code is: {token}\n\nMake sure not to forget your password again\n\nBest regards,\n\nIntelligent Chatbot IT Team\n'
+
+    email = EmailMessage()
+    # email["From"] = sender
+    email['From'] = formatted_sender
+    email["To"] = recipient
+    email["Subject"] = "Your Intelligent Chatbot reset code"
+    email.set_content(message)
+
+    smtp = smtplib.SMTP("smtp-mail.outlook.com", port=587)
+    smtp.starttls()
+    smtp.login(sender, PASS)
+    smtp.sendmail(sender, recipient, email.as_string())
+    smtp.quit()
+
+    
+def change_password_email (recipient, user_name):
+
+    # Define the sender's name and email address
+    sender_name = "Intelligent Chatbot Security Team"
+    sender_email = EMAIL
+
+    # Format the sender's name and email address
+    formatted_sender = formataddr((sender_name, sender_email))
+    
+    sender = EMAIL
+    recipient = recipient
+    
+    message = f'Dear {user_name}, \n\nWe wanted to inform you that your password has been successfully changed. If you did not initiate this change, please notify us immediately so we can investigate further and take necessary security measures. \n\nBest regards,\n\nIntelligent Chatbot Security Team\n'
+
+    email = EmailMessage()
+    # email["From"] = sender
+    email['From'] = formatted_sender
+    email["To"] = recipient
+    email["Subject"] = "Important: Password Change Notification"
+    email.set_content(message)
+
+    smtp = smtplib.SMTP("smtp-mail.outlook.com", port=587)
+    smtp.starttls()
+    smtp.login(sender, PASS)
+    smtp.sendmail(sender, recipient, email.as_string())
+    smtp.quit()
 
 def get_embeddings(text):
     response = client.embeddings.create(
