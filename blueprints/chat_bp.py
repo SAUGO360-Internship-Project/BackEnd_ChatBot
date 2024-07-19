@@ -407,7 +407,7 @@ def view_pdfs():
 
 @chat_bp.route('/view_pdf/<string:pdf_title>', methods=['GET'])
 def view_pdf(pdf_title):
-    token = extract_auth_token(request)
+    token = request.args.get('token')
     if not token:
         return jsonify({"message": "Authentication token is required"}), 401
     try:
