@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify,current_app
+from flask import Blueprint, request, jsonify,current_app, send_file, url_for
 from openai import OpenAI
 from model.chat import Chat, Conversation, Feedback, chat_schema, chats_schema, conversation_schema, conversations_schema,feedback_schema, feedbacks_schema
 from extensions import db,get_embeddings,select_relevant_few_shots,contains_data_altering_operations,contains_sensitive_info,get_google_maps_loc,format_address,create_token,extract_auth_token,decode_token,format_as_table,generate_chart_code,generate_map_code,generate_heatmap_code,allowed_file,process_pdf,chunk_pdf_to_chroma,extract_text_with_ocr,select_relevant_pdf_chunks
@@ -388,18 +388,40 @@ def view_pdfs():
     except Exception as e:
         print(f"Error decoding token: {e}")
         return jsonify({"message": "Invalid token"}), 401
+
     collection_name = f"user_{user_id}_pdfs"
-    collection = client_chroma.get_or_create_collection(name=collection_name,embedding_function=openai_ef)
+    collection = client_chroma.get_or_create_collection(name=collection_name, embedding_function=openai_ef)
 
     if not collection:
         return jsonify({"message": "No PDFs found for this user."}), 404
-    
+
     items = collection.get(include=["metadatas"])
     print(items)
     metadata_list = items.get('metadatas', [])
     pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
-    
-    return jsonify({"pdfs": pdf_titles}), 200
+
+    pdf_data = [{"title": title, "url": url_for('chat_bp.view_pdf', pdf_title=title, _external=True)} for title in pdf_titles]
+
+    return jsonify({"pdfs": pdf_data}), 200
+
+
+@chat_bp.route('/view_pdf/<string:pdf_title>', methods=['GET'])
+def view_pdf(pdf_title):
+    token = extract_auth_token(request)
+    if not token:
+        return jsonify({"message": "Authentication token is required"}), 401
+    try:
+        user_id = decode_token(token)
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        return jsonify({"message": "Invalid token"}), 401
+
+    file_path = os.path.join(UPLOAD_FOLDER, f"{pdf_title}.pdf")
+    if not os.path.exists(file_path):
+        return jsonify({"message": "PDF not found"}), 404
+
+    return send_file(file_path, as_attachment=False, mimetype='application/pdf')
+
 
 # Delete pdf
 @chat_bp.route('/delete_pdf/<string:pdf_title>', methods=['DELETE'])

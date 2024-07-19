@@ -1,11 +1,13 @@
 from flask import Blueprint, request, jsonify
 import pyotp
 import qrcode
+import jwt
 from model.user import User, user_schema
-from extensions import db, bcrypt, validate_email, validate_password, validate_username_format, extract_auth_token, decode_token, create_token, verify_otp, send_email
+from extensions import db, bcrypt, validate_email, validate_password, validate_username_format, extract_auth_token, decode_token, create_token, verify_otp, send_email, change_password_email
 
 user_bp = Blueprint('user_bp', __name__)
 
+#route to register a new user 
 @user_bp.route('/user', methods=['POST'])
 def add_user():
     try:
@@ -64,7 +66,7 @@ def add_user():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
         
-        
+#route to delete the user account
 @user_bp.route('/user', methods=['DELETE'])
 def delete_user():
     try:
@@ -91,7 +93,7 @@ def delete_user():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
-
+#route to authenticate user credentials  
 @user_bp.route('/authentication', methods=['POST'])
 def authentication():
     try:
@@ -131,7 +133,7 @@ def authentication():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
     
-    
+#route to request the user's token for forgotten passwords
 @user_bp.route('/forgot_password', methods=['POST'])
 def forgot_password():
     try:
@@ -158,7 +160,7 @@ def forgot_password():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
-    
+#route to reset password  
 @user_bp.route('/reset_password', methods=['POST'])
 def reset_password():
     try:
@@ -189,7 +191,7 @@ def reset_password():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
     
-
+#route to request the user's token for lost qrcode
 @user_bp.route('/lost_qrcode', methods=['POST'])
 def get_qrcode():
     try:
@@ -229,7 +231,7 @@ def get_qrcode():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
-    
+#route to reset the user's qrcode and retreive it 
 @user_bp.route('/get_qrcode', methods=['POST'])
 def get_qr_code_url():
     try:
@@ -256,5 +258,112 @@ def get_qr_code_url():
 
         return jsonify({"qr_code_url": qr_code_url}), 200
 
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
+
+#route to get the user's profile information 
+@user_bp.route('/profile', methods=['GET'])
+def get_profile():
+    try:
+        token = extract_auth_token(request)
+
+        if (token==None):
+            return jsonify({"message": "Unauthorized"}), 401
+        
+        user_id = decode_token(token)    
+        user = User.query.get(user_id)
+        if user:
+            result = user_schema.dump(user)
+            return jsonify(result)
+        else:
+            return jsonify({"message": "User not found"}), 404
+    
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as e:
+        return jsonify({"message": "Unauthorized"}), 401    
+    except Exception as e:
+        return jsonify({"message": str(e)})
+        # return jsonify({"error": "Invalid JSON format. Ensure the request body is correctly formatted JSON."}), 400
+        
+#route to change the user's password when logged in 
+@user_bp.route('/profile/password', methods=['PUT'])
+def change_password():
+    try:
+        token = extract_auth_token(request)
+
+        if (token==None):
+            return jsonify({"message": "Unauthorized"}), 403
+        else:
+            user_id = decode_token(token)
+            
+        data = request.json
+        if ('current_password' not in data or 'new_password' not in data):
+            return jsonify({"message": "'current_password', and 'new_password' are required."}), 400
+
+        current_password = data['current_password']
+        new_password = data['new_password']
+
+        user = User.query.get(user_id)
+        
+        if user:
+            if not bcrypt.check_password_hash(user.hashed_password, current_password):
+                return jsonify({"message": "Current password is incorrect."}), 400
+
+            if not validate_password(new_password):
+                return jsonify({"message": "New password should contain at least 8 characters, including lowercase letters, uppercase letters, numbers, and special symbols."}), 400
+            
+            # Update the user's password
+            user.hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+            db.session.commit()
+            change_password_email(user.email, user.user_name)
+            return jsonify({"message": "Password updated successfully."}), 200
+        else:
+            return jsonify({"message": "User not found"}), 404
+        
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return jsonify({"message": "Unauthorized"}), 403    
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
+    
+    
+@user_bp.route('/profile/username', methods=['PUT'])
+def change_username():
+    try:
+        # Extract and verify the token
+        token = extract_auth_token(request)
+        if not token:
+            return jsonify({"message": "Unauthorized"}), 403
+        
+        user_id = decode_token(token)
+        
+        data = request.json
+        if 'current_username' not in data or 'new_username' not in data:
+            return jsonify({"message": "'current_username' and 'new_username' are required."}), 400
+        
+        current_username = data['current_username']
+        new_username = data['new_username']
+        
+        # Ensure the new username is not already taken
+        if User.query.filter_by(user_name=new_username).first():
+            return jsonify({"message": "New username is already taken."}), 400
+
+        # Validate the new username format 
+        if not (3 <= len(new_username) <= 20):  
+            return jsonify({"message": "New username must be between 3 and 20 characters."}), 400
+        
+        user = User.query.get(user_id)
+        
+        if user:
+            if user.user_name != current_username:
+                return jsonify({"message": "Current username is incorrect."}), 400
+
+            # Update the user's username
+            user.user_name = new_username
+            db.session.commit()
+            return jsonify({"message": "Username updated successfully."}), 200
+        else:
+            return jsonify({"message": "User not found."}), 404
+
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return jsonify({"message": "Unauthorized"}), 403    
     except Exception as e:
         return jsonify({"message": str(e)}), 400
