@@ -52,7 +52,7 @@ def add_user():
 
         # Get QR code URL for the user
         qr_code_url = pyotp.TOTP(new_user.secret_key).provisioning_uri(new_user.email, issuer_name="Intelligent Chatbot")
-        qrcode.make(qr_code_url).save("totp.png")
+        # qrcode.make(qr_code_url).save("totp.png")
         
         # Serialize the new user object
         serialized_user = user_schema.dump(new_user)
@@ -253,7 +253,7 @@ def get_qr_code_url():
             return jsonify({"message": "User not found."}), 404
 
         # Update user's password
-        qr_code_url = pyotp.TOTP(user.secret_key).provisioning_uri(user.email, issuer_name="Exchange APP")
+        qr_code_url = pyotp.TOTP(user.secret_key).provisioning_uri(user.email, issuer_name="Intelligent Chatbot")
         qrcode.make(qr_code_url).save("totp.png")
 
         return jsonify({"qr_code_url": qr_code_url}), 200
