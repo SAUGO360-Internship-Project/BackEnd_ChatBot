@@ -398,7 +398,6 @@ def view_pdfs():
     items = collection.get(include=["metadatas"])
     print(items)
     metadata_list = items.get('metadatas', [])
-    # pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
     filenames = list(set([item['filename'] for item in metadata_list]))
     pdf_data = [{"title": filename, "url": url_for('chat_bp.view_pdf', filename=filename, _external=True)} for filename in filenames]
 
