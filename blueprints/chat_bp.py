@@ -763,11 +763,11 @@ def format_response_with_gpt(user_question, data, chat_id):
 def get_pdf_answer(user_question,relevant_chunks,pdf_title,chat_id):
     message=[{"role":"system","content":
                 '''
-                You will be given chunks of a PDF that are labeled by page number and chunk number. Each chunk is half a page long.
+                You will be given chunks of a PDF that are labeled by chunk number.
                 The user will also give you the title of that PDF. 
                 You must know that these chunks may not be in order and may not be consecutive. 
                 Then, the user will be asking you a question.
-                Your main goal is to read these chunks carefully, find an answer to the user question, and format it in a user-friendly way and a full brief sentence taking into consideration his feedback if he has any.
+                Your main goal is to read these chunks carefully, find an answer to the user question, and format it in a user-friendly way taking into consideration his feedback if he has any.
                 Keep in mind that you might not need to use all the chunks to find an answer, as the answer might be in only one chunk.
                 And at the end, ask a kind question similar to "Is there anything else I can assist you with?", but change this question often in order to avoid repitition.
                 '''
@@ -784,7 +784,7 @@ def get_pdf_answer(user_question,relevant_chunks,pdf_title,chat_id):
     
     prompt = f"PDF title: {pdf_title}\n\n"
     for chunk in relevant_chunks:
-        prompt += f"(Page {chunk['page_number']}, Chunk {chunk['chunk_number']}):\n{chunk['chunk_text']}\n\n"
+        prompt += f"(Chunk {chunk['chunk_number']}):\n{chunk['chunk_text']}\n\n"
     prompt += f"User Question: {user_question}\n\n"
     print(prompt)
     message.append({'role':'user','content':prompt})

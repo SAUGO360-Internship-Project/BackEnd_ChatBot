@@ -21,6 +21,9 @@ from werkzeug.utils import secure_filename
 from email.message import EmailMessage
 import smtplib
 from email.utils import formataddr
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+
 
 load_dotenv()
 
@@ -441,36 +444,76 @@ def extract_text_with_ocr(page):
         return "\n".join(texts)
     return ""
 
-def chunk_pdf_to_chroma(file_path, collection_name):
+
+def chunk_pdf_to_chroma(file_path, collection_name, chunk_size=500, chunk_overlap=100):
     # Read PDF and chunk it
     with pdfplumber.open(file_path) as pdf:
-        chunks = []
+        text = ""
         for page_num, page in enumerate(pdf.pages):
-            text = page.extract_text()
-            if not text:
-                text = extract_text_with_ocr(page)  # Use OCR if no text is found
-            if not text:
-                continue  # Skip pages with no text
-            
-            # Split text in half if it's a long page
-            half_page_length = len(text) // 2
-            first_half = text[:half_page_length]
-            second_half = text[half_page_length:]
-            chunks.append((page_num, first_half))
-            chunks.append((page_num, second_half))
-    
+            page_text = page.extract_text()
+            if not page_text:
+                page_text = extract_text_with_ocr(page)  # Use OCR if no text is found
+            if page_text:
+                text += page_text + "\n"  # Combine all text from the PDF
+
+    # Use RecursiveCharacterTextSplitter to chunk the text
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, 
+        chunk_overlap=chunk_overlap,
+        separators=[
+        "\n\n",
+        "\n",
+        " ",
+        ".",
+        ""
+        ])
+    chunks = splitter.split_text(text)
+
     # Create or get Chroma collection
-    collection = client_chroma.get_or_create_collection(name=collection_name,embedding_function=openai_ef)
-    pdf_title = os.path.splitext(os.path.basename(file_path))[0] #fix
+    collection = client_chroma.get_or_create_collection(name=collection_name, embedding_function=openai_ef)
+    pdf_title = os.path.splitext(os.path.basename(file_path))[0]
+
     # Store chunks in Chroma collection
-    for chunk_num, (page_num, chunk_text) in enumerate(chunks):
+    for chunk_num, chunk_text in enumerate(chunks):
         collection.add(
-            ids=[f"{pdf_title}_page{page_num}_chunk{chunk_num}"],
+            ids=[f"{pdf_title}_chunk{chunk_num}"],
             embeddings=[get_embeddings(chunk_text)],
-            metadatas=[{'pdf_title': pdf_title, 'page_number': page_num, 'chunk_number': chunk_num,'chunk_text':chunk_text}]
+            metadatas=[{'pdf_title': pdf_title, 'chunk_number': chunk_num, 'chunk_text': chunk_text}]
         )
 
     return f"Successfully processed and stored {len(chunks)} chunks from {file_path} in Chroma collection '{collection_name}'"
+
+
+# def chunk_pdf_to_chroma(file_path, collection_name):
+#     # Read PDF and chunk it
+#     with pdfplumber.open(file_path) as pdf:
+#         chunks = []
+#         for page_num, page in enumerate(pdf.pages):
+#             text = page.extract_text()
+#             if not text:
+#                 text = extract_text_with_ocr(page)  # Use OCR if no text is found
+#             if not text:
+#                 continue  # Skip pages with no text
+            
+#             # Split text in half if it's a long page
+#             half_page_length = len(text) // 2
+#             first_half = text[:half_page_length]
+#             second_half = text[half_page_length:]
+#             chunks.append((page_num, first_half))
+#             chunks.append((page_num, second_half))
+    
+#     # Create or get Chroma collection
+#     collection = client_chroma.get_or_create_collection(name=collection_name,embedding_function=openai_ef)
+#     pdf_title = os.path.splitext(os.path.basename(file_path))[0] #fix
+#     # Store chunks in Chroma collection
+#     for chunk_num, (page_num, chunk_text) in enumerate(chunks):
+#         collection.add(
+#             ids=[f"{pdf_title}_page{page_num}_chunk{chunk_num}"],
+#             embeddings=[get_embeddings(chunk_text)],
+#             metadatas=[{'pdf_title': pdf_title, 'page_number': page_num, 'chunk_number': chunk_num,'chunk_text':chunk_text}]
+#         )
+
+#     return f"Successfully processed and stored {len(chunks)} chunks from {file_path} in Chroma collection '{collection_name}'"
 
 
 
@@ -500,7 +543,6 @@ def select_relevant_pdf_chunks(user_question, user_id,pdf_title, top_n=5, distan
                 relevant_chunks.append({
                     "ids": metadata.get('ids'),
                     "chunk_text": metadata.get('chunk_text'),
-                    "page_number": metadata.get('page_number'),
                     "chunk_number": metadata.get('chunk_number')
                     })
 
