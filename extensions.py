@@ -22,6 +22,7 @@ from email.message import EmailMessage
 import smtplib
 from email.utils import formataddr
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+import hashlib
 
 
 
@@ -429,7 +430,7 @@ def process_pdf(filename, user_id):
         return {"message": "File not found"}, 404
 
     collection_name = f"user_{user_id}_pdfs"
-    result_message = chunk_pdf_to_chroma(file_path, collection_name)
+    result_message = chunk_pdf_to_chroma(filename,file_path, collection_name)
 
     return {"message": result_message}, 200
 def extract_text_with_ocr(page):
@@ -445,7 +446,7 @@ def extract_text_with_ocr(page):
     return ""
 
 
-def chunk_pdf_to_chroma(file_path, collection_name, chunk_size=500, chunk_overlap=100):
+def chunk_pdf_to_chroma(filename,file_path, collection_name, chunk_size=800, chunk_overlap=200):
     # Read PDF and chunk it
     with pdfplumber.open(file_path) as pdf:
         text = ""
@@ -471,18 +472,46 @@ def chunk_pdf_to_chroma(file_path, collection_name, chunk_size=500, chunk_overla
 
     # Create or get Chroma collection
     collection = client_chroma.get_or_create_collection(name=collection_name, embedding_function=openai_ef)
-    pdf_title = os.path.splitext(os.path.basename(file_path))[0]
+    # pdf_title = os.path.splitext(os.path.basename(file_path))[0]
+    title, description = get_title_and_description(text)         
+    doc_id = hashlib.md5(text.encode('utf-8')).hexdigest()
 
     # Store chunks in Chroma collection
     for chunk_num, chunk_text in enumerate(chunks):
         collection.add(
-            ids=[f"{pdf_title}_chunk{chunk_num}"],
+            ids=[f"{doc_id}_chunk{chunk_num}"],
             embeddings=[get_embeddings(chunk_text)],
-            metadatas=[{'pdf_title': pdf_title, 'chunk_number': chunk_num, 'chunk_text': chunk_text}]
+            metadatas=[{'filename':filename,'doc_id': doc_id,'pdf_title': title, 'description': description, 'chunk_number': chunk_num, 'chunk_text': chunk_text}]
         )
 
     return f"Successfully processed and stored {len(chunks)} chunks from {file_path} in Chroma collection '{collection_name}'"
 
+
+def get_title_and_description(text):
+    message=[{'role':'system','content':
+              '''
+              The user will give you text. You must generate a meaningful brief title and a brief description that is around 2 or 3 sentences as a JSON string in the following format:
+              {
+                'Title':
+                'Description':
+              }
+              '''}]
+    message.append({'role':'user','content':f'{text}'})
+    response = client.chat.completions.create(
+        model='gpt-4o',  
+        messages=message,
+        response_format={ "type": "json_object" }, 
+        max_tokens=500
+    )
+    result=response.choices[0].message.content.strip()
+    try:
+        response_json = json.loads(result)
+        title = response_json["Title"]
+        description = response_json["Description"]
+    except json.JSONDecodeError:
+        title = None
+        description = None
+    return title, description
 
 # def chunk_pdf_to_chroma(file_path, collection_name):
 #     # Read PDF and chunk it
@@ -518,7 +547,7 @@ def chunk_pdf_to_chroma(file_path, collection_name, chunk_size=500, chunk_overla
 
 
 
-def select_relevant_pdf_chunks(user_question, user_id,pdf_title, top_n=5, distance_threshold=1.0):
+def select_relevant_pdf_chunks(user_question, user_id,doc_id, top_n=5, distance_threshold=1.0):
     user_embedding = get_embeddings(user_question)
     relevant_chunks = []
 
@@ -532,7 +561,7 @@ def select_relevant_pdf_chunks(user_question, user_id,pdf_title, top_n=5, distan
     results = collection.query(
         query_embeddings=[user_embedding],
         n_results=top_n,
-        where={'pdf_title':pdf_title},
+        where={'doc_id':doc_id},
         include=['distances', 'metadatas']
     )
 
@@ -542,8 +571,12 @@ def select_relevant_pdf_chunks(user_question, user_id,pdf_title, top_n=5, distan
             if distance < distance_threshold:
                 relevant_chunks.append({
                     "ids": metadata.get('ids'),
+                    "pdf_title": metadata.get('pdf_title'),
                     "chunk_text": metadata.get('chunk_text'),
                     "chunk_number": metadata.get('chunk_number')
                     })
+
+    relevant_chunks = sorted(relevant_chunks, key=lambda x: x['chunk_number'])
+
 
     return relevant_chunks

@@ -398,15 +398,15 @@ def view_pdfs():
     items = collection.get(include=["metadatas"])
     print(items)
     metadata_list = items.get('metadatas', [])
-    pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
-
-    pdf_data = [{"title": title, "url": url_for('chat_bp.view_pdf', pdf_title=title, _external=True)} for title in pdf_titles]
+    # pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
+    filenames = list(set([item['filename'] for item in metadata_list]))
+    pdf_data = [{"title": filename, "url": url_for('chat_bp.view_pdf', filename=filename, _external=True)} for filename in filenames]
 
     return jsonify({"pdfs": pdf_data}), 200
 
 
-@chat_bp.route('/view_pdf/<string:pdf_title>', methods=['GET'])
-def view_pdf(pdf_title):
+@chat_bp.route('/view_pdf/<string:filename>', methods=['GET'])
+def view_pdf(filename):
     token = request.args.get('token')
     if not token:
         return jsonify({"message": "Authentication token is required"}), 401
@@ -416,7 +416,7 @@ def view_pdf(pdf_title):
         print(f"Error decoding token: {e}")
         return jsonify({"message": "Invalid token"}), 401
 
-    file_path = os.path.join(UPLOAD_FOLDER, f"{pdf_title}.pdf")
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
     if not os.path.exists(file_path):
         return jsonify({"message": "PDF not found"}), 404
 
@@ -424,8 +424,8 @@ def view_pdf(pdf_title):
 
 
 # Delete pdf
-@chat_bp.route('/delete_pdf/<string:pdf_title>', methods=['DELETE'])
-def delete_pdf(pdf_title):
+@chat_bp.route('/delete_pdf/<string:filename>', methods=['DELETE'])
+def delete_pdf(filename):
     token = extract_auth_token(request)
     if not token:
         return jsonify({"message": "Authentication token is required"}), 401
@@ -441,17 +441,17 @@ def delete_pdf(pdf_title):
     if not collection:
         return jsonify({"message": "No PDFs found for this user."}), 404
     
-    items = collection.get(include=["metadatas"], where={'pdf_title': pdf_title})
+    items = collection.get(include=["metadatas"], where={'filename': filename})
     print(items)
     
     ids_to_delete = items['ids']    
 
     collection.delete(ids=ids_to_delete)
     
-    file_path = os.path.join(UPLOAD_FOLDER, f"{pdf_title}.pdf")
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
-    return jsonify({"message": f"PDF '{pdf_title}' and its chunks successfully deleted."}), 200
+    return jsonify({"message": f"PDF '{filename}' and its chunks successfully deleted."}), 200
 
 
 
@@ -487,8 +487,17 @@ def ask():
     
     items = collection.get(include=["metadatas"])
     metadata_list = items.get('metadatas', [])
-    pdf_titles = list(set([item['pdf_title'] for item in metadata_list]))
-    print(pdf_titles)
+    pdf_titles = ""
+    pdf_descriptions = ""
+    unique_documents = {}
+    for item in metadata_list:
+        doc_id = item['doc_id']
+        if doc_id not in unique_documents:
+            unique_documents[doc_id] = (item['pdf_title'], item.get('description', 'No description available'))
+
+    for i, (doc_id, (title, description)) in enumerate(unique_documents.items(), start=1):
+        pdf_titles += f"{i}. {title} (Document ID: {doc_id})\n"
+        pdf_descriptions += f"{i}. {description}\n"
 
     # Create the system message with all instructions and context
     conversation_history = [
@@ -517,12 +526,15 @@ def ask():
                     2) Location-related information (such as address, city, state) and contact information are not considered sensitive and you may retrieve them. If the user asks a location related question then you must fetch the full address that answers that question. When you write queries that fetch state or city, the data may be stored as an abbreviation; example: "California" and "CA".
                     3) HeatMaps: HeatMaps are not related in any way to actual location-based maps. Never fetch locations for a heatmap unless the user explicitly asks you to do so. When the user asks for heatmap, he will specify what data would be the x-axis, y-axis and data points. You must fetch what he wants in the following order: x-axis, y axis, data points.
                 Case 2:
-                    The user asks questions about certain PDF documents with the following titles: {pdf_titles} 
+                    The user asks questions about certain PDF documents with the following titles and document ids:
+                    {pdf_titles}
+                    The PDFs mentioned above have the following descriptions:
+                    {pdf_descriptions} 
                     Your primary objective is to read each question and return 5 fields as JSON string as follows:
                     {{
                         "Score": 10. Type: integer.
                         "Executable": "PDF". Type: string.
-                        "Answer": the title of the PDF that holds the information that the user is asking about. Type: string.
+                        "Answer": the document id of the PDF that holds the information that the user is asking about. Type: string.
                         "Location": "No". Type: string. 
                         "ChartName": "None". Type: string.
                     }}
@@ -556,7 +568,8 @@ def ask():
 
     if executable== "PDF":
         relevant_chunks = select_relevant_pdf_chunks(user_question, user_id, sql_query)
-        response=get_pdf_answer(user_question,relevant_chunks,sql_query,chat_id)
+
+        response=get_pdf_answer(user_question,relevant_chunks,chat_id)
         try:
             conversation = Conversation(
             chat_id=chat_id,
@@ -690,6 +703,7 @@ def generate_sql_query(user_question, conversation_history,user_id):
     response = client.chat.completions.create(
         model='gpt-4o',
         messages=conversation_history,
+        response_format= {"type":'json_object'},
         max_tokens=700
     )
     gpt_response = response.choices[0].message.content.strip()
@@ -760,12 +774,11 @@ def format_response_with_gpt(user_question, data, chat_id):
     return response.choices[0].message.content.strip()
 
 
-def get_pdf_answer(user_question,relevant_chunks,pdf_title,chat_id):
+def get_pdf_answer(user_question,relevant_chunks,chat_id):
     message=[{"role":"system","content":
                 '''
                 You will be given chunks of a PDF that are labeled by chunk number.
                 The user will also give you the title of that PDF. 
-                You must know that these chunks may not be in order and may not be consecutive. 
                 Then, the user will be asking you a question.
                 Your main goal is to read these chunks carefully, find an answer to the user question, and format it in a user-friendly way taking into consideration his feedback if he has any.
                 Keep in mind that you might not need to use all the chunks to find an answer, as the answer might be in only one chunk.
@@ -782,6 +795,7 @@ def get_pdf_answer(user_question,relevant_chunks,pdf_title,chat_id):
         message.append({"role": "user", "content": user_query_with_feedback})
         message.append({"role": "assistant", "content": convo.response})
     
+    pdf_title=relevant_chunks[0]['pdf_title']
     prompt = f"PDF title: {pdf_title}\n\n"
     for chunk in relevant_chunks:
         prompt += f"(Chunk {chunk['chunk_number']}):\n{chunk['chunk_text']}\n\n"

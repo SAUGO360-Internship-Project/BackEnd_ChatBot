@@ -7,7 +7,7 @@ import os
 client = chromadb.PersistentClient(path="chroma_data", settings=Settings())
 
 # Collection name
-collection_name = "few_shot"
+# collection_name = "few_shot"
 openai_ef = embedding_functions.OpenAIEmbeddingFunction(
                 api_key=str(os.getenv('OPENAI_API_KEY')),
                 model_name="text-embedding-3-large"
@@ -20,6 +20,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 # print(client.get_collection(name=collection_name,embedding_function=openai_ef))
 # print(client.list_collections())
 # Get the list of collections
+# client.delete_collection("user_1_pdfs")
 collections = client.list_collections()
 
 # Print the names of the collections

@@ -16,7 +16,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
             )
 
 collection_name = "few_shot"
-collection = client.get_collection(name=collection_name,embedding_function=openai_ef)
+collection = client.get_or_create_collection(name=collection_name,embedding_function=openai_ef)
 
 
 @fewshot_bp.route('/fewshot', methods=['POST'])
