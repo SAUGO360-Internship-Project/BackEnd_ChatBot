@@ -173,6 +173,19 @@ def validate_password(password):
         number_pattern.search(password) is not None and
         special_symbol_pattern.search(password) is not None
     )
+#function to verify phone number 
+def validate_phone_number(phone_number):
+    """
+    Validates a phone number using a regular expression pattern.
+
+    Parameters:
+    - phone_number (str): The phone number to be validated.
+
+    Returns:
+    - bool: True if the phone number is valid, False otherwise.
+    """
+    pattern = r'^\+961\d{8}$'
+    return re.match(pattern, phone_number) is not None
 
 # Verify OTP during login
 def verify_otp(user, otp):

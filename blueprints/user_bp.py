@@ -1,12 +1,21 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory
 import pyotp
 import qrcode
 import jwt
+from PIL import Image
+from io import BytesIO
+import base64
+import os
 from model.user import User, user_schema
-from extensions import db, bcrypt, validate_email, validate_password, validate_username_format, extract_auth_token, decode_token, create_token, verify_otp, send_email, change_password_email
+from extensions import db, bcrypt, validate_email, validate_password, validate_username_format, validate_phone_number ,extract_auth_token, decode_token, create_token, verify_otp, send_email, change_password_email
 
 user_bp = Blueprint('user_bp', __name__)
 
+
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+    
 #route to register a new user 
 @user_bp.route('/user', methods=['POST'])
 def add_user():
@@ -261,29 +270,39 @@ def get_qr_code_url():
     except Exception as e:
         return jsonify({"message": str(e)}), 400
 
+@user_bp.route('/profile-image/<filename>', methods=['GET'])
+def get_profile_image(filename):
+    try:
+        return send_from_directory(UPLOAD_FOLDER, filename)
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
+
 #route to get the user's profile information 
 @user_bp.route('/profile', methods=['GET'])
 def get_profile():
     try:
         token = extract_auth_token(request)
 
-        if (token==None):
+        if token is None:
             return jsonify({"message": "Unauthorized"}), 401
         
-        user_id = decode_token(token)    
+        user_id = decode_token(token)
         user = User.query.get(user_id)
         if user:
             result = user_schema.dump(user)
+            result['profile_image'] = f"/user/profile-image/user_{user.id}_profile.png" if user.profile_image else None
             return jsonify(result)
         else:
             return jsonify({"message": "User not found"}), 404
-    
+
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as e:
-        return jsonify({"message": "Unauthorized"}), 401    
+        return jsonify({"message": "Unauthorized"}), 401
     except Exception as e:
         return jsonify({"message": str(e)})
-        # return jsonify({"error": "Invalid JSON format. Ensure the request body is correctly formatted JSON."}), 400
+
         
+
+    
 #route to change the user's password when logged in 
 @user_bp.route('/profile/password', methods=['PUT'])
 def change_password():
@@ -325,45 +344,65 @@ def change_password():
         return jsonify({"message": str(e)}), 400
     
     
-@user_bp.route('/profile/username', methods=['PUT'])
-def change_username():
+@user_bp.route('/profile', methods=['PUT'])
+def update_profile():
     try:
-        # Extract and verify the token
         token = extract_auth_token(request)
         if not token:
-            return jsonify({"message": "Unauthorized"}), 403
-        
+            return jsonify({"message": "Unauthorized"}), 401
+
         user_id = decode_token(token)
-        
-        data = request.json
-        if 'current_username' not in data or 'new_username' not in data:
-            return jsonify({"message": "'current_username' and 'new_username' are required."}), 400
-        
-        current_username = data['current_username']
-        new_username = data['new_username']
-        
-        # Ensure the new username is not already taken
-        if User.query.filter_by(user_name=new_username).first():
-            return jsonify({"message": "New username is already taken."}), 400
-
-        # Validate the new username format 
-        if not (3 <= len(new_username) <= 20):  
-            return jsonify({"message": "New username must be between 3 and 20 characters."}), 400
-        
         user = User.query.get(user_id)
-        
-        if user:
-            if user.user_name != current_username:
-                return jsonify({"message": "Current username is incorrect."}), 400
+        if not user:
+            return jsonify({"message": "User not found"}), 404
 
-            # Update the user's username
+        data = request.form  # Get form data
+        files = request.files  # Get file data
+
+        # Update the user fields if provided in the request
+        if 'user_name' in data:
+            new_username = data['user_name']
+            if User.query.filter_by(user_name=new_username).first():
+                return jsonify({"message": "New username is already taken."}), 400
+            if not validate_username_format(new_username):
+                return jsonify({"message": "User cannot contain spaces."}), 400
             user.user_name = new_username
-            db.session.commit()
-            return jsonify({"message": "Username updated successfully."}), 200
-        else:
-            return jsonify({"message": "User not found."}), 404
+
+        if 'email' in data:
+            new_email = data['email']
+            if User.query.filter_by(email=new_email).first():
+                return jsonify({"message": "Email is already in use."}), 400
+            if not validate_email(new_email):
+                return jsonify({"message": "Invalid email format."}), 400
+            user.email = new_email
+
+        if 'phone_number' in data:
+            new_phone_number = data['phone_number']
+            if not validate_phone_number(new_phone_number):
+                return jsonify({"message": "Invalid phone number format."}), 400
+            user.phone_number = new_phone_number
+
+        if 'gender' in data:
+            user.gender = data['gender']
+
+        if 'bio_description' in data:
+            user.bio_description = data['bio_description']
+
+        if 'address' in data:
+            user.address = data['address']
+
+        if 'profile_image' in files:
+            profile_image = files['profile_image']
+            if profile_image:
+                filename = f"user_{user.id}_profile.png"
+                image_path = os.path.join(UPLOAD_FOLDER, filename)
+                profile_image.save(image_path)
+                user.profile_image = image_path
+
+        db.session.commit()
+        return jsonify({"message": "Profile updated successfully"}), 200
 
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        return jsonify({"message": "Unauthorized"}), 403    
+        return jsonify({"message": "Unauthorized"}), 401
     except Exception as e:
         return jsonify({"message": str(e)}), 400
